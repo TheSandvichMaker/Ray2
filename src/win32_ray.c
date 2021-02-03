@@ -4,6 +4,7 @@
 
 global b32 G_Running = true;
 global win32_state G_Win32State;
+global LARGE_INTEGER G_PerfFreq;
 
 internal void *
 Win32Reserve(usize Size, u32 Flags, const char *Tag)
@@ -11,7 +12,7 @@ Win32Reserve(usize Size, u32 Flags, const char *Tag)
     usize PageSize = G_Platform.PageSize;
     usize TotalSize = PageSize + Size;
 
-    win32_allocation_header* Header = VirtualAlloc(0, TotalSize, MEM_RESERVE, PAGE_NOACCESS);
+    win32_allocation_header *Header = VirtualAlloc(0, TotalSize, MEM_RESERVE, PAGE_NOACCESS);
     VirtualAlloc(Header, PageSize, MEM_COMMIT, PAGE_READWRITE);
 
     Header->Size = TotalSize;
@@ -50,7 +51,10 @@ Win32Deallocate(void *Pointer)
 {
     if (Pointer)
     {
-        VirtualFree(Pointer, 0, MEM_RELEASE);
+        win32_allocation_header *Header = (win32_allocation_header *)((char *)Pointer - G_Platform.PageSize);
+        Header->Prev->Next = Header->Next;
+        Header->Next->Prev = Header->Prev;
+        VirtualFree(Header, 0, MEM_RELEASE);
     }
 }
 
@@ -77,16 +81,15 @@ Win32WindowProc(HWND Window, UINT Message, WPARAM wParam, LPARAM lParam)
 int
 main(int argc, char **argv)
 {
+    HINSTANCE Instance = 0;
+
     G_Win32State.AllocationSentinel.Next = &G_Win32State.AllocationSentinel;
     G_Win32State.AllocationSentinel.Prev = &G_Win32State.AllocationSentinel;
 
+	QueryPerformanceFrequency(&G_PerfFreq);
+
     SYSTEM_INFO SystemInfo;
     GetSystemInfo(&SystemInfo);
-
-    usize PageSize = SystemInfo.dwPageSize;
-
-    LARGE_INTEGER PerfFreq;
-	QueryPerformanceFrequency(&PerfFreq);
 
     platform_api API =
     {
@@ -94,23 +97,19 @@ main(int argc, char **argv)
         .Commit     = Win32Commit,
         .Allocate   = Win32Allocate,
         .Deallocate = Win32Deallocate,
-        .PageSize   = PageSize,
+        .PageSize   = SystemInfo.dwPageSize,
     };
-
     G_Platform = API;
 
-    app_init_params Params = { 0 };
-    Params.WindowTitle = "Unnamed Window";
-    Params.WindowX = CW_USEDEFAULT;
-    Params.WindowY = CW_USEDEFAULT;
-    Params.WindowW = CW_USEDEFAULT;
-    Params.WindowH = CW_USEDEFAULT;
-
+    app_init_params Params =
+    {
+        .WindowTitle = "Unnamed Window",
+        .WindowX = CW_USEDEFAULT,
+        .WindowY = CW_USEDEFAULT,
+        .WindowW = CW_USEDEFAULT,
+        .WindowH = CW_USEDEFAULT,
+    };
     AppEntry(&Params);
-
-    app_input Input = { 0 };
-
-    HINSTANCE Instance = 0;
 
     WNDCLASSA WindowClass =
     {
@@ -133,6 +132,8 @@ main(int argc, char **argv)
         if (WindowHandle)
         {
             ShowWindow(WindowHandle, SW_SHOWNORMAL);
+
+            app_input Input = { 0 };
 
             while (G_Running)
             {

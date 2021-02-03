@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <emmintrin.h>
 
 //
 // Types
@@ -176,5 +177,55 @@ typedef struct app_init_params {
 } app_init_params;
 
 void AppEntry(app_init_params *Params);
+
+//
+// Threading
+//
+
+internal inline u32
+AtomicAddU32(volatile u32 *Dest, s32 Value) {
+    u32 Result = __atomic_fetch_add(Dest, Value, __ATOMIC_ACQ_REL);
+    return Result;
+}
+
+internal inline u64
+AtomicAddU64(volatile u64 *Dest, s64 Value) {
+    u64 Result = __atomic_fetch_add(Dest, Value, __ATOMIC_ACQ_REL);
+    return Result;
+}
+
+internal inline s32
+AtomicAddS32(volatile s32 *Dest, s32 Value) {
+    s32 Result = __atomic_fetch_add(Dest, Value, __ATOMIC_ACQ_REL);
+    return Result;
+}
+
+internal inline s64
+AtomicAddS64(volatile s64 *Dest, s64 Value) {
+    s64 Result = __atomic_fetch_add(Dest, Value, __ATOMIC_ACQ_REL);
+    return Result;
+}
+
+typedef struct ticket_mutex
+{
+    volatile u32 Ticket;
+    volatile u32 Serving;
+} ticket_mutex;
+
+internal inline void
+BeginTicketMutex(ticket_mutex *Mutex)
+{
+    u32 Ticket = AtomicAddU32(&Mutex->Ticket, 1);
+    while (Ticket != Mutex->Serving)
+    {
+        _mm_pause();
+    }
+}
+
+internal inline void
+EndTicketMutex(ticket_mutex *Mutex)
+{
+    AtomicAddU32(&Mutex->Serving, 1);
+}
 
 #endif /* RAY_PLATFORM_H */
