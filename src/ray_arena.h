@@ -1,11 +1,11 @@
 #ifndef RAY_ARENA_H
 #define RAY_ARENA_H
 
-static inline void
-ZeroSize(usize SizeInit, void* DataInit)
+internal inline void
+ZeroSize(usize SizeInit, void *DataInit)
 {
     usize Size = SizeInit;
-    char* Data = (char*)DataInit;
+    char *Data = (char *)DataInit;
     while (Size--)
     {
         *Data++ = 0;
@@ -20,12 +20,12 @@ typedef struct arena
     usize Capacity;
     usize Committed;
     usize Used;
-    char* Base;
+    char *Base;
     u32 TempCount;
 } arena;
 
-static inline usize
-GetAlignOffset(arena* Arena, usize Align)
+internal inline usize
+GetAlignOffset(arena *Arena, usize Align)
 {
     usize Offset = (usize)Arena->Base & (Align - 1);
     if (Offset)
@@ -35,47 +35,47 @@ GetAlignOffset(arena* Arena, usize Align)
     return Offset;
 }
 
-static inline char*
-GetNextAllocationLocation(arena* Arena, usize Align)
+internal inline char *
+GetNextAllocationLocation(arena *Arena, usize Align)
 {
     usize AlignOffset = GetAlignOffset(Arena, Align);
     char* Result = Arena->Base + Arena->Used + AlignOffset;
     return Result;
 }
 
-static inline usize
-GetSizeRemaining(arena* Arena, usize Align)
+internal inline usize
+GetSizeRemaining(arena *Arena, usize Align)
 {
     usize AlignOffset = GetAlignOffset(Arena, Align);
     usize Result = Arena->Capacity - (Arena->Used + AlignOffset);
     return Result;
 }
 
-static inline void
-ClearArena(arena* Arena)
+internal inline void
+ClearArena(arena *Arena)
 {
     Assert(Arena->TempCount == 0);
     Arena->Used = 0;
     Arena->TempCount = 0;
 }
 
-static inline void
-DeallocateArena(arena* Arena)
+internal inline void
+DeallocateArena(arena *Arena)
 {
     Assert(Arena->TempCount == 0);
     G_Platform.Deallocate(Arena->Base);
     ZeroStruct(Arena);
 }
 
-static inline void
-ResetArenaTo(arena* Arena, char* Target)
+internal inline void
+ResetArenaTo(arena *Arena, char *Target)
 {
     Assert((Target >= Arena->Base) && (Target <= (Arena->Base + Arena->Used)));
     Arena->Used = (Target - Arena->Base);
 }
 
-static inline void
-InitArenaWithMemory(arena* Arena, usize MemorySize, void* Memory)
+internal inline void
+InitArenaWithMemory(arena *Arena, usize MemorySize, void *Memory)
 {
     ZeroStruct(Arena);
     Arena->Capacity = MemorySize;
@@ -86,32 +86,32 @@ InitArenaWithMemory(arena* Arena, usize MemorySize, void* Memory)
     Arena->Base = (char*)Memory;
 }
 
-static inline void
+internal inline void
 CheckArena(arena* Arena)
 {
     Assert(Arena->TempCount == 0);
 }
 
 #define PushStruct(Arena, Type) \
-    (Type*)PushSize_(Arena, sizeof(Type), alignof(Type), true)
+    (Type*)PushSize_(Arena, sizeof(Type), alignof(Type), true, LOCATION_STRING(#Arena))
 #define PushAlignedStruct(Arena, Type, Align) \
-    (Type*)PushSize_(Arena, sizeof(Type), Align, true)
+    (Type*)PushSize_(Arena, sizeof(Type), Align, true, LOCATION_STRING(#Arena))
 #define PushStructNoClear(Arena, Type) \
-    (Type*)PushSize_(Arena, sizeof(Type), alignof(Type), false)
+    (Type*)PushSize_(Arena, sizeof(Type), alignof(Type), false, LOCATION_STRING(#Arena))
 #define PushAlignedStructNoClear(Arena, Type, Align) \
-    (Type*)PushSize_(Arena, sizeof(Type), Align, false)
+    (Type*)PushSize_(Arena, sizeof(Type), Align, false, LOCATION_STRING(#Arena))
 
 #define PushArray(Arena, Count, Type) \
-    (Type*)PushSize_(Arena, sizeof(Type)*(Count), alignof(Type), true)
+    (Type*)PushSize_(Arena, sizeof(Type)*(Count), alignof(Type), true, LOCATION_STRING(#Arena))
 #define PushAlignedArray(Arena, Count, Type, Align) \
-    (Type*)PushSize_(Arena, sizeof(Type)*(Count), Align, true)
+    (Type*)PushSize_(Arena, sizeof(Type)*(Count), Align, true, LOCATION_STRING(#Arena))
 #define PushArrayNoClear(Arena, Count, Type) \
-    (Type*)PushSize_(Arena, sizeof(Type)*(Count), alignof(Type), false)
+    (Type*)PushSize_(Arena, sizeof(Type)*(Count), alignof(Type), false, LOCATION_STRING(#Arena))
 #define PushAlignedArrayNoClear(Arena, Count, Type, Align) \
-    (Type*)PushSize_(Arena, sizeof(Type)*(Count), Align, false)
+    (Type*)PushSize_(Arena, sizeof(Type)*(Count), Align, false, LOCATION_STRING(#Arena))
 
-static inline void*
-PushSize_(arena* Arena, usize Size, usize Align, b32 Clear)
+internal inline void *
+PushSize_(arena *Arena, usize Size, usize Align, b32 Clear, const char *Tag)
 {
     if (!Arena->Capacity)
     {
@@ -124,7 +124,7 @@ PushSize_(arena* Arena, usize Size, usize Align, b32 Clear)
         // NOTE: Let's align up to page size because that's the minimum allocation granularity anyway,
         //       and the code doing the commit down below assumes our capacity is page aligned.
         Arena->Capacity = AlignPow2(Arena->Capacity, G_Platform.PageSize);
-        Arena->Base = (char*)G_Platform.Reserve(Arena->Capacity);
+        Arena->Base = (char*)G_Platform.Reserve(Arena->Capacity, MemFlag_NoLeakCheck, Tag);
     }
 
     usize AlignOffset = GetAlignOffset(Arena, Align);
@@ -132,7 +132,7 @@ PushSize_(arena* Arena, usize Size, usize Align, b32 Clear)
 
     Assert((Arena->Used + AlignedSize) <= Arena->Capacity);
 
-    char* UnalignedBase = Arena->Base + Arena->Used;
+    char *UnalignedBase = Arena->Base + Arena->Used;
 
     if (Arena->Committed < (Arena->Used + AlignedSize))
     {
@@ -142,7 +142,7 @@ PushSize_(arena* Arena, usize Size, usize Align, b32 Clear)
         Assert(Arena->Committed >= (Arena->Used + AlignedSize));
     }
 
-    void* Result = UnalignedBase + AlignOffset;
+    void *Result = UnalignedBase + AlignOffset;
     Arena->Used += AlignedSize;
 
     if (Clear) {
@@ -152,15 +152,49 @@ PushSize_(arena* Arena, usize Size, usize Align, b32 Clear)
     return Result;
 }
 
-#define BootstrapPushStruct(Type, Member) \
-    BootstrapPushStruct_(sizeof(Type), alignof(Type), offsetof(Type, Member))
-static inline void*
-BootstrapPushStruct_(usize Size, usize Align, usize ArenaOffset)
+#define BootstrapPushStruct(Type, Member)                                     \
+    BootstrapPushStruct_(sizeof(Type), alignof(Type), offsetof(Type, Member), \
+                         LOCATION_STRING("Bootstrap " #Type "::" #Member))
+internal inline void *
+BootstrapPushStruct_(usize Size, usize Align, usize ArenaOffset, const char *Tag)
 {
     arena Arena = { 0 };
-    void* State = PushSize_(&Arena, Size, Align, true);
-    *(arena*)((char*)State + ArenaOffset) = Arena;
+    void* State = PushSize_(&Arena, Size, Align, true, Tag);
+    *(arena*)((char *)State + ArenaOffset) = Arena;
     return State;
 }
+
+typedef struct temporary_memory
+{
+    arena *Arena;
+    usize Used;
+} temporary_memory;
+
+internal inline temporary_memory
+BeginTemporaryMemory(arena *Arena)
+{
+    temporary_memory Result =
+    {
+        .Arena = Arena,
+        .Used  = Arena->Used,
+    };
+    ++Arena->TempCount;
+    return Result;
+}
+
+internal inline void
+EndTemporaryMemory(temporary_memory Temp)
+{
+    if (Temp.Arena)
+    {
+        Temp.Arena->Used = Temp.Used;
+        --Temp.Arena->TempCount;
+    }
+}
+
+#define ScopedMemory(Arena)                                       \
+    for (temporary_memory TempMem_ = BeginTemporaryMemory(Arena); \
+         TempMem_.Arena;                                          \
+         EndTemporaryMemory(TempMem_), TempMem_.Arena = 0)
 
 #endif /* RAY_ARENA_H */

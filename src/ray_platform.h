@@ -62,6 +62,9 @@ typedef intptr_t  ssize;
 
 #define auto __auto_type
 #define bool _Bool
+#define global static
+#define internal static
+#define local_persist static
 
 #define StaticAssert(expression, message) _Static_assert(expression, message)
 
@@ -139,11 +142,21 @@ typedef intptr_t  ssize;
 // Platform API
 //
 
+#define FILE_AND_LINE_STRING__(File, Line) File ":" #Line
+#define FILE_AND_LINE_STRING_(File, Line) FILE_AND_LINE_STRING__(File, Line)
+#define FILE_AND_LINE_STRING FILE_AND_LINE_STRING_(__FILE__, __LINE__)
+#define LOCATION_STRING(...) FILE_AND_LINE_STRING " (" __VA_ARGS__ ")"
+
+enum
+{
+    MemFlag_NoLeakCheck = 0x1,
+};
+
 typedef struct platform_api {
-    void* (*Allocate)(usize Size);
-    void* (*Reserve)(usize Size);
-    void* (*Commit)(usize Size, void* Pointer);
-    void  (*Deallocate)(void* Pointer);
+    void* (*Reserve)(usize Size, u32 Flags, const char *Tag);
+    void* (*Commit)(usize Size, void *Pointer);
+    void* (*Allocate)(usize Size, u32 Flags, const char *Tag);
+    void  (*Deallocate)(void *Pointer);
     usize PageSize;
 } platform_api;
 
@@ -156,9 +169,12 @@ typedef struct app_input {
 } app_input;
 
 typedef struct app_init_params {
-    void (*AppTick)(platform_api PlatformAPI, app_input* Input);
+    const char* WindowTitle;
+    int WindowX, WindowY;
+    int WindowW, WindowH;
+    void (*AppTick)(platform_api PlatformAPI, app_input *Input);
 } app_init_params;
 
-app_init_params AppEntry(void);
+void AppEntry(app_init_params *Params);
 
 #endif /* RAY_PLATFORM_H */

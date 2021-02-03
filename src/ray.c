@@ -1,21 +1,19 @@
 #include "ray.h"
 
-static void RayTick(platform_api API, app_input* Input);
+internal void RayTick(platform_api API, app_input *Input);
 
-app_init_params
-AppEntry(void)
+void
+AppEntry(app_init_params *Params)
 {
-    return (app_init_params){
-        .AppTick = RayTick,
-    };
+    Params->AppTick = RayTick;
 }
 
-static void
-RayTick(platform_api API, app_input* Input)
+internal void
+RayTick(platform_api API, app_input *Input)
 {
     G_Platform = API;
 
-    static ray_state* RayState = 0;
+    local_persist ray_state *RayState = 0;
     if (!RayState)
     {
         RayState = BootstrapPushStruct(ray_state, Arena);

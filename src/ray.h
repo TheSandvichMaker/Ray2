@@ -3,7 +3,7 @@
 
 #include "ray_platform.h"
 
-static platform_api G_Platform;
+global platform_api G_Platform;
 
 #include "ray_arena.h"
 #include "ray_math.h"
@@ -29,7 +29,7 @@ typedef struct scene {
 typedef struct ray_state
 {
     arena Arena;
-    scene* Scene;
+    scene *Scene;
 } ray_state;
 
 #endif /* RAY_H */

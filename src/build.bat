@@ -22,6 +22,7 @@ if "%1" equ "release" (
 set SHARED_FLAGS=-g -gcodeview -W -Wall -Wextra -Werror -Wno-unused-function -Wno-deprecated-declarations -Wno-unused-parameter -Wno-unused-variable -Wno-writable-strings
 set DEBUG_FLAGS=-O0 -DDEBUG_BUILD
 set RELEASE_FLAGS=-O3
+set LINK_LIBRARIES=-luser32.lib -lgdi32.lib -lopengl32.lib
 
 if "%1" equ "release" (
     set FLAGS=%SHARED_FLAGS% %RELEASE_FLAGS%
@@ -29,7 +30,7 @@ if "%1" equ "release" (
     set FLAGS=%SHARED_FLAGS% %DEBUG_FLAGS%
 )
 
-clang %SOURCE% %FLAGS% -o %OUTPUT%
+clang %SOURCE% %FLAGS% -o %OUTPUT% %LINK_LIBRARIES%
 set LAST_ERROR=%ERRORLEVEL%
 
 popd REM build
