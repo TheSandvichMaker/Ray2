@@ -30,7 +30,6 @@ GLGetInfo(opengl_info *Info)
     Info->Renderer               = (char *)glGetString(GL_RENDERER);
     Info->Version                = (char *)glGetString(GL_VERSION);
     Info->ShadingLanguageVersion = (char *)glGetString(GL_SHADING_LANGUAGE_VERSION);
-    Info->Extensions             = (char *)glGetString(GL_EXTENSIONS);
 
     GLint ExtensionCount;
     glGetIntegerv(GL_NUM_EXTENSIONS, &ExtensionCount);
@@ -109,7 +108,7 @@ GLDisplayBitmap(int W, int H, void *Data, int WindowW, int WindowH, GLuint BlitT
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
 
-    GLSetScreenspace(W, H);
+    GLSetScreenspace(WindowW, WindowH);
 
     glDisable(GL_BLEND);
     glEnable(GL_TEXTURE_2D);
@@ -120,16 +119,16 @@ GLDisplayBitmap(int W, int H, void *Data, int WindowW, int WindowH, GLuint BlitT
     glTexCoord2f(0, 0);
     glVertex2f(0, 0);
     glTexCoord2f(1, 0);
-    glVertex2f(1, 0);
+    glVertex2f(W, 0);
     glTexCoord2f(1, 1);
-    glVertex2f(1, 1);
+    glVertex2f(W, H);
 
     glTexCoord2f(0, 0);
     glVertex2f(0, 0);
     glTexCoord2f(1, 1);
-    glVertex2f(1, 1);
+    glVertex2f(W, H);
     glTexCoord2f(0, 1);
-    glVertex2f(0, 1);
+    glVertex2f(0, H);
 
     glEnd();
 
@@ -137,12 +136,101 @@ GLDisplayBitmap(int W, int H, void *Data, int WindowW, int WindowH, GLuint BlitT
     glEnable(GL_BLEND);
 }
 
+internal void
+GLCompileShaders(void)
+{
+    GLint Success;
+    char InfoLog[1024];
+
+    const char *VertexShaderSource = 
+        "#version 330 core\n"
+        "layout (location = 0) in vec3 aPos;\n"
+        "void main()\n"
+        "{\n"
+        "    gl_Position = vec4(aPos.x, aPos.y, aPos.z, 1.0);\n"
+        "}\n";
+
+    GLuint VertexShader = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(VertexShader, 1, &VertexShaderSource, NULL);
+    glCompileShader(VertexShader);
+
+    glGetShaderiv(VertexShader, GL_COMPILE_STATUS, &Success);
+    if (!Success)
+    {
+        glGetShaderInfoLog(VertexShader, sizeof(InfoLog), NULL, InfoLog);
+        fprintf(stderr, "OpenGL Vertex Shader Compilation Failed: %s\n", InfoLog);
+    }
+
+    const char *FragmentShaderSource = 
+        "#version 330 core\n"
+        "out vec4 FragColor;"
+        "void main()\n"
+        "{\n"
+        "    FragColor = vec4(1.0f, 0.5f, 0.25f, 1.0f);\n"
+        "}\n";
+
+    GLuint FragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(FragmentShader, 1, &FragmentShaderSource, NULL);
+    glCompileShader(FragmentShader);
+
+    glGetShaderiv(FragmentShader, GL_COMPILE_STATUS, &Success);
+    if (!Success)
+    {
+        glGetShaderInfoLog(FragmentShader, sizeof(InfoLog), NULL, InfoLog);
+        fprintf(stderr, "OpenGL Fragment Shader Compilation Failed: %s\n", InfoLog);
+    }
+
+    GLuint ShaderProgram = glCreateProgram();
+    glAttachShader(ShaderProgram, VertexShader);
+    glAttachShader(ShaderProgram, FragmentShader);
+    glLinkProgram(ShaderProgram);
+    
+    glGetProgramiv(ShaderProgram, GL_LINK_STATUS, &Success);
+    if (!Success)
+    {
+        glGetProgramInfoLog(ShaderProgram, sizeof(InfoLog), NULL, InfoLog);
+        fprintf(stderr, "OpenGL Program Link Error: %s\n", InfoLog);
+    }
+
+    OpenGL.ShaderProgram = ShaderProgram;
+
+    glDeleteShader(VertexShader);
+    glDeleteShader(FragmentShader);
+}
+
+global float Triangles[] =
+{
+    -0.5f, -0.5f, 0.0f,
+     0.5f, -0.5f, 0.0f,
+     0.5f,  0.5f, 0.0f,
+};
+
+internal void
+GLTestTriangle(void)
+{
+    glClearColor(1, 0, 1, 1);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    glUseProgram(OpenGL.ShaderProgram);
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+}
+
 internal
 GL_DEBUG_CALLBACK(GLDebugCallback)
 {
     char *ErrorMessage = (char *)Message;
-    if (Severity >= GL_DEBUG_SEVERITY_LOW)
+    if ((Severity == GL_DEBUG_SEVERITY_LOW)    ||
+        (Severity == GL_DEBUG_SEVERITY_MEDIUM) ||
+        (Severity == GL_DEBUG_SEVERITY_HIGH))
     {
+        char *SeverityString = "Unexpected Severity";
+        switch (Severity)
+        {
+            case GL_DEBUG_SEVERITY_LOW   : { SeverityString = "Low"; } break;
+            case GL_DEBUG_SEVERITY_MEDIUM: { SeverityString = "Medium"; } break;
+            case GL_DEBUG_SEVERITY_HIGH  : { SeverityString = "High"; } break;
+        }
+        fprintf(stderr, "OpenGL Error (Severity: %s): %s\n", SeverityString, ErrorMessage);
         Assert(!"OpenGL Error Encountered!");
     }
 }
@@ -152,6 +240,20 @@ GLInit(opengl_info *Info)
 {
     Info->DefaultInternalTextureFormat = GL_SRGB8_ALPHA8;
     glEnable(GL_FRAMEBUFFER_SRGB);
+
+    GLuint VAO;
+    glGenVertexArrays(1, &VAO);
+    glBindVertexArray(VAO);
+
+    glGenBuffers(1, &OpenGL.VBO);
+
+    glBindBuffer(GL_ARRAY_BUFFER, OpenGL.VBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(Triangles), Triangles, GL_STATIC_DRAW);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3*sizeof(float), (void *)0);
+    glEnableVertexAttribArray(0);
+
+    GLCompileShaders();
 
     if (glDebugMessageCallbackARB)
     {

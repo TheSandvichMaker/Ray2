@@ -100,18 +100,112 @@ Win32Deallocate(void *Pointer)
 #define GL_DEBUG_CALLBACK(Name) void WINAPI Name(GLenum Source, GLenum Type, GLuint Id, GLenum Severity, GLsizei Length, const GLchar *Message, const void *UserParam)
 typedef GL_DEBUG_CALLBACK(gl_debug_proc);
 
-#define GL_FUNCTIONS(_)                                   \
-    _(GLubyte *, glGetStringi, GLenum name, GLuint index) \
-    _(void, glDebugMessageCallbackARB, gl_debug_proc *Callback, const void *UserParam)
+#define GL_FUNCTIONS(_)                                                                                    \
+    _(GLubyte *, glGetStringi, GLenum name, GLuint index)                                                  \
+    _(void, glDebugMessageCallbackARB, gl_debug_proc *Callback, const void *UserParam)                     \
+    _(void, glGenBuffers, GLsizei n, GLuint *buffers)                                                      \
+    _(void, glBindBuffer, GLenum target, GLuint buffer)                                                    \
+    _(void, glBufferData, GLenum target, GLsizeiptr size, const void *data, GLenum usage)                  \
+    _(void, glAttachShader, GLuint program, GLuint shader)                                                 \
+    _(void, glBindAttribLocation, GLuint program, GLuint index, const GLchar *name)                        \
+    _(void, glCompileShader, GLuint shader)                                                                \
+    _(GLuint, glCreateProgram, void)                                                                       \
+    _(GLuint, glCreateShader, GLenum type)                                                                 \
+    _(void, glDeleteProgram, GLuint program)                                                               \
+    _(void, glDeleteShader, GLuint shader)                                                                 \
+    _(void, glDetachShader, GLuint program, GLuint shader)                                                 \
+    _(void, glDrawBuffers, GLsizei n, const GLenum *bufs)                                                  \
+    _(void, glGetShaderiv, GLuint shader, GLenum pname, GLint *params)                                     \
+    _(void, glGetShaderInfoLog, GLuint shader, GLsizei bufSize, GLsizei *length, GLchar *infoLog)          \
+    _(void, glGetShaderSource, GLuint shader, GLsizei bufSize, GLsizei *length, GLchar *source)            \
+    _(GLint, glGetUniformLocation, GLuint program, const GLchar *name)                                     \
+    _(void, glGetUniformfv, GLuint program, GLint location, GLfloat *params)                               \
+    _(void, glGetUniformiv, GLuint program, GLint location, GLint *params)                                 \
+    _(void, glGetVertexAttribdv, GLuint index, GLenum pname, GLdouble *params)                             \
+    _(void, glGetVertexAttribfv, GLuint index, GLenum pname, GLfloat *params)                              \
+    _(void, glGetVertexAttribiv, GLuint index, GLenum pname, GLint *params)                                \
+    _(void, glGetVertexAttribPointerv, GLuint index, GLenum pname, void **pointer)                         \
+    _(GLboolean, glIsProgram, GLuint program)                                                              \
+    _(GLboolean, glIsShader, GLuint shader)                                                                \
+    _(void, glLinkProgram, GLuint program)                                                                 \
+    _(void, glShaderSource, GLuint shader, GLsizei count, const GLchar *const*string, const GLint *length) \
+    _(void, glUseProgram, GLuint program)                                                                  \
+    _(void, glUniform1f, GLint location, GLfloat v0)                                                       \
+    _(void, glUniform2f, GLint location, GLfloat v0, GLfloat v1)                                           \
+    _(void, glUniform3f, GLint location, GLfloat v0, GLfloat v1, GLfloat v2)                               \
+    _(void, glUniform4f, GLint location, GLfloat v0, GLfloat v1, GLfloat v2, GLfloat v3)                   \
+    _(void, glUniform1i, GLint location, GLint v0)                                                         \
+    _(void, glUniform2i, GLint location, GLint v0, GLint v1)                                               \
+    _(void, glUniform3i, GLint location, GLint v0, GLint v1, GLint v2)                                     \
+    _(void, glUniform4i, GLint location, GLint v0, GLint v1, GLint v2, GLint v3)                           \
+    _(void, glUniform1fv, GLint location, GLsizei count, const GLfloat *value)                             \
+    _(void, glUniform2fv, GLint location, GLsizei count, const GLfloat *value)                             \
+    _(void, glUniform3fv, GLint location, GLsizei count, const GLfloat *value)                             \
+    _(void, glUniform4fv, GLint location, GLsizei count, const GLfloat *value)                             \
+    _(void, glUniform1iv, GLint location, GLsizei count, const GLint *value)                               \
+    _(void, glUniform2iv, GLint location, GLsizei count, const GLint *value)                               \
+    _(void, glUniform3iv, GLint location, GLsizei count, const GLint *value)                               \
+    _(void, glUniform4iv, GLint location, GLsizei count, const GLint *value)                               \
+    _(void, glUniformMatrix2fv, GLint location, GLsizei count, GLboolean transpose, const GLfloat *value)  \
+    _(void, glUniformMatrix3fv, GLint location, GLsizei count, GLboolean transpose, const GLfloat *value)  \
+    _(void, glUniformMatrix4fv, GLint location, GLsizei count, GLboolean transpose, const GLfloat *value)  \
+    _(void, glValidateProgram, GLuint program)                                                             \
+    _(void, glVertexAttrib1d, GLuint index, GLdouble x)                                                    \
+    _(void, glVertexAttrib1dv, GLuint index, const GLdouble *v)                                            \
+    _(void, glVertexAttrib1f, GLuint index, GLfloat x)                                                     \
+    _(void, glVertexAttrib1fv, GLuint index, const GLfloat *v)                                             \
+    _(void, glVertexAttrib1s, GLuint index, GLshort x)                                                     \
+    _(void, glVertexAttrib1sv, GLuint index, const GLshort *v)                                             \
+    _(void, glVertexAttrib2d, GLuint index, GLdouble x, GLdouble y)                                        \
+    _(void, glVertexAttrib2dv, GLuint index, const GLdouble *v)                                            \
+    _(void, glVertexAttrib2f, GLuint index, GLfloat x, GLfloat y)                                          \
+    _(void, glVertexAttrib2fv, GLuint index, const GLfloat *v)                                             \
+    _(void, glVertexAttrib2s, GLuint index, GLshort x, GLshort y)                                          \
+    _(void, glVertexAttrib2sv, GLuint index, const GLshort *v)                                             \
+    _(void, glVertexAttrib3d, GLuint index, GLdouble x, GLdouble y, GLdouble z)                            \
+    _(void, glVertexAttrib3dv, GLuint index, const GLdouble *v)                                            \
+    _(void, glVertexAttrib3f, GLuint index, GLfloat x, GLfloat y, GLfloat z)                               \
+    _(void, glVertexAttrib3fv, GLuint index, const GLfloat *v)                                             \
+    _(void, glVertexAttrib3s, GLuint index, GLshort x, GLshort y, GLshort z)                               \
+    _(void, glVertexAttrib3sv, GLuint index, const GLshort *v)                                             \
+    _(void, glVertexAttrib4Nbv, GLuint index, const GLbyte *v)                                             \
+    _(void, glVertexAttrib4Niv, GLuint index, const GLint *v)                                              \
+    _(void, glVertexAttrib4Nsv, GLuint index, const GLshort *v)                                            \
+    _(void, glVertexAttrib4Nub, GLuint index, GLubyte x, GLubyte y, GLubyte z, GLubyte w)                  \
+    _(void, glVertexAttrib4Nubv, GLuint index, const GLubyte *v)                                           \
+    _(void, glVertexAttrib4Nuiv, GLuint index, const GLuint *v)                                            \
+    _(void, glVertexAttrib4Nusv, GLuint index, const GLushort *v)                                          \
+    _(void, glVertexAttrib4bv, GLuint index, const GLbyte *v)                                              \
+    _(void, glVertexAttrib4d, GLuint index, GLdouble x, GLdouble y, GLdouble z, GLdouble w)                \
+    _(void, glVertexAttrib4dv, GLuint index, const GLdouble *v)                                            \
+    _(void, glVertexAttrib4f, GLuint index, GLfloat x, GLfloat y, GLfloat z, GLfloat w)                    \
+    _(void, glVertexAttrib4fv, GLuint index, const GLfloat *v)                                             \
+    _(void, glVertexAttrib4iv, GLuint index, const GLint *v)                                               \
+    _(void, glVertexAttrib4s, GLuint index, GLshort x, GLshort y, GLshort z, GLshort w)                    \
+    _(void, glVertexAttrib4sv, GLuint index, const GLshort *v)                                             \
+    _(void, glVertexAttrib4ubv, GLuint index, const GLubyte *v)                                            \
+    _(void, glVertexAttrib4uiv, GLuint index, const GLuint *v)                                             \
+    _(void, glVertexAttrib4usv, GLuint index, const GLushort *v)                                           \
+    _(void, glVertexAttribPointer, GLuint index, GLint size, GLenum type, GLboolean normalized,            \
+                                   GLsizei stride, const void *pointer)                                    \
+    _(GLint, glGetAttribLocation, GLuint program, const GLchar *name)                                      \
+    _(void, glGetProgramiv, GLuint program, GLenum pname, GLint *params)                                   \
+    _(void, glGetProgramInfoLog, GLuint program, GLsizei bufSize, GLsizei *length, GLchar *infoLog)        \
+    _(void, glDisableVertexAttribArray, GLuint index)                                                      \
+    _(void, glEnableVertexAttribArray, GLuint index)                                                       \
+    _(void, glBindVertexArray, GLuint array)                                                               \
+    _(void, glDeleteVertexArrays, GLsizei n, const GLuint *arrays)                                         \
+    _(void, glGenVertexArrays, GLsizei n, GLuint *arrays)
 
 GL_FUNCTIONS(WGL_DECLARE_FUNCTION)
 
 #include "ray_opengl.c"
 
-#define WGL_FUNCTIONS(_)                                                                                                                                  \
-    _(BOOL, wglChoosePixelFormatARB, HDC hdc, const int *piAttribIList, const FLOAT *pfAttribFList, UINT nMaxFormats, int *piFormats, UINT *nNumFormats); \
-    _(HGLRC, wglCreateContextAttribsARB, HDC hDC, HGLRC hShareContext, const int *attribList);                                                            \
-    _(BOOL, wglSwapIntervalEXT, int interval);                                                                                                            \
+#define WGL_FUNCTIONS(_)                                                                            \
+    _(BOOL, wglChoosePixelFormatARB, HDC hdc, const int *piAttribIList, const FLOAT *pfAttribFList, \
+                                     UINT nMaxFormats, int *piFormats, UINT *nNumFormats);          \
+    _(HGLRC, wglCreateContextAttribsARB, HDC hDC, HGLRC hShareContext, const int *attribList);      \
+    _(BOOL, wglSwapIntervalEXT, int interval);                                                      \
     _(const char*, wglGetExtensionsStringEXT);
 
 WGL_FUNCTIONS(WGL_DECLARE_FUNCTION)
@@ -273,10 +367,10 @@ WGLInit(HDC WindowDC, wgl_info *WGLInfo, opengl_info *OpenGLInfo)
 {
     int WGLAttribs[] =
     {
-        WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
-        WGL_CONTEXT_MINOR_VERSION_ARB, 3,
-        WGL_CONTEXT_FLAGS_ARB, WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB|WGL_CONTEXT_DEBUG_BIT_ARB,
-        WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB,
+        WGL_CONTEXT_MAJOR_VERSION_ARB, 4,
+        WGL_CONTEXT_MINOR_VERSION_ARB, 5,
+        WGL_CONTEXT_FLAGS_ARB, WGL_CONTEXT_DEBUG_BIT_ARB,
+        WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
         0,
     };
 
@@ -420,14 +514,14 @@ main(int argc, char **argv)
     GLuint BlitHandle;
     glGenTextures(1, &BlitHandle);
 
-    int TestW = 320;
-    int TestH = 240;
+    int TestW = 1280;
+    int TestH = 720;
     u32 *TestPixels = Win32Allocate(sizeof(u32)*TestW*TestH, MemFlag_NoLeakCheck, LOCATION_STRING());
 
     for (int Y = 0; Y < TestH; ++Y)
     for (int X = 0; X < TestW; ++X)
     {
-        TestPixels[Y*TestW + X] = 0xFFFFFFFF; // (255 << 24)|(((X & 255) << 16)|((Y & 255) << 8));
+        TestPixels[Y*TestW + X] = (255 << 24)|(((X & 255) << 16)|((Y & 255) << 8));
     }
 
     ShowWindow(WindowHandle, SW_SHOWNORMAL);
@@ -465,7 +559,8 @@ main(int argc, char **argv)
         int ClientW, ClientH;
         Win32RectSpecs(ClientRect, 0, 0, &ClientW, &ClientH);
 
-        GLDisplayBitmap(TestW, TestH, TestPixels, ClientW, ClientH, BlitHandle);
+        GLTestTriangle();
+        // GLDisplayBitmap(TestW, TestH, TestPixels, ClientW, ClientH, BlitHandle);
 
         SwapBuffers(WindowDC);
 

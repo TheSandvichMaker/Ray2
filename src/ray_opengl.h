@@ -19,6 +19,19 @@
 #define GL_DEBUG_SEVERITY_NOTIFICATION    0x826B
 #define GL_DEBUG_OUTPUT_SYNCHRONOUS       0x8242
 
+#define GL_STREAM_DRAW                    0x88E0
+#define GL_STATIC_DRAW                    0x88E4
+#define GL_DYNAMIC_DRAW                   0x88E8
+
+#define GL_ARRAY_BUFFER                   0x8892
+
+#define GL_FRAGMENT_SHADER                0x8B30
+#define GL_VERTEX_SHADER                  0x8B31
+#define GL_COMPILE_STATUS                 0x8B81
+#define GL_LINK_STATUS                    0x8B82
+#define GL_VALIDATE_STATUS                0x8B83
+#define GL_INFO_LOG_LENGTH                0x8B84
+
 typedef char GLchar;
 typedef ptrdiff_t GLsizeiptr;
 
@@ -35,7 +48,6 @@ typedef struct opengl_info {
     char *Renderer;
     char *Version;
     char *ShadingLanguageVersion;
-    char *Extensions;
 
     int MajorVersion;
     int MinorVersion;
@@ -45,5 +57,12 @@ typedef struct opengl_info {
 
     MY_GL_EXTENSIONS(GL_DECLARE_EXTENSION_STRUCT_MEMBER)
 } opengl_info;
+
+typedef struct opengl_state {
+    GLuint VBO;
+    GLuint ShaderProgram;
+} opengl_state;
+
+global opengl_state OpenGL;
 
 #endif /* RAY_OPENGL_H */
