@@ -3,10 +3,12 @@
 
 #include "ray_platform.h"
 #include <windows.h>
+#include <gl/gl.h>
 
 global platform_api G_Platform;
 
 #include "ray_arena.h"
+#include "ray_opengl.h"
 
 typedef struct win32_allocation_header
 {

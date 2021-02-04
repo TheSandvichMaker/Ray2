@@ -15,6 +15,8 @@ ZeroSize(usize SizeInit, void *DataInit)
 #define ZeroStruct(Struct) ZeroSize(sizeof(*(Struct)), Struct)
 #define ZeroArray(Count, Data) ZeroSize(sizeof(*(Data))*(Count), Data)
 
+#define DEFAULT_ARENA_CAPACITY Gigabytes(8)
+
 typedef struct arena
 {
     usize Capacity;
@@ -83,7 +85,7 @@ InitArenaWithMemory(arena *Arena, usize MemorySize, void *Memory)
     //       If you want an arena that exploits virtual memory to progressively commit, you
     //       shouldn't init it with any existing memory.
     Arena->Committed = MemorySize;
-    Arena->Base = (char*)Memory;
+    Arena->Base = (char *)Memory;
 }
 
 internal inline void
@@ -93,22 +95,22 @@ CheckArena(arena* Arena)
 }
 
 #define PushStruct(Arena, Type) \
-    (Type*)PushSize_(Arena, sizeof(Type), alignof(Type), true, LOCATION_STRING(#Arena))
+    (Type *)PushSize_(Arena, sizeof(Type), alignof(Type), true, LOCATION_STRING(#Arena))
 #define PushAlignedStruct(Arena, Type, Align) \
-    (Type*)PushSize_(Arena, sizeof(Type), Align, true, LOCATION_STRING(#Arena))
+    (Type *)PushSize_(Arena, sizeof(Type), Align, true, LOCATION_STRING(#Arena))
 #define PushStructNoClear(Arena, Type) \
-    (Type*)PushSize_(Arena, sizeof(Type), alignof(Type), false, LOCATION_STRING(#Arena))
+    (Type *)PushSize_(Arena, sizeof(Type), alignof(Type), false, LOCATION_STRING(#Arena))
 #define PushAlignedStructNoClear(Arena, Type, Align) \
-    (Type*)PushSize_(Arena, sizeof(Type), Align, false, LOCATION_STRING(#Arena))
+    (Type *)PushSize_(Arena, sizeof(Type), Align, false, LOCATION_STRING(#Arena))
 
 #define PushArray(Arena, Count, Type) \
-    (Type*)PushSize_(Arena, sizeof(Type)*(Count), alignof(Type), true, LOCATION_STRING(#Arena))
+    (Type *)PushSize_(Arena, sizeof(Type)*(Count), alignof(Type), true, LOCATION_STRING(#Arena))
 #define PushAlignedArray(Arena, Count, Type, Align) \
-    (Type*)PushSize_(Arena, sizeof(Type)*(Count), Align, true, LOCATION_STRING(#Arena))
+    (Type *)PushSize_(Arena, sizeof(Type)*(Count), Align, true, LOCATION_STRING(#Arena))
 #define PushArrayNoClear(Arena, Count, Type) \
-    (Type*)PushSize_(Arena, sizeof(Type)*(Count), alignof(Type), false, LOCATION_STRING(#Arena))
+    (Type *)PushSize_(Arena, sizeof(Type)*(Count), alignof(Type), false, LOCATION_STRING(#Arena))
 #define PushAlignedArrayNoClear(Arena, Count, Type, Align) \
-    (Type*)PushSize_(Arena, sizeof(Type)*(Count), Align, false, LOCATION_STRING(#Arena))
+    (Type *)PushSize_(Arena, sizeof(Type)*(Count), Align, false, LOCATION_STRING(#Arena))
 
 internal inline void *
 PushSize_(arena *Arena, usize Size, usize Align, b32 Clear, const char *Tag)
@@ -116,7 +118,7 @@ PushSize_(arena *Arena, usize Size, usize Align, b32 Clear, const char *Tag)
     if (!Arena->Capacity)
     {
         Assert(!Arena->Base);
-        Arena->Capacity = Gigabytes(8);
+        Arena->Capacity = DEFAULT_ARENA_CAPACITY;
     }
 
     if (!Arena->Base)
@@ -124,7 +126,7 @@ PushSize_(arena *Arena, usize Size, usize Align, b32 Clear, const char *Tag)
         // NOTE: Let's align up to page size because that's the minimum allocation granularity anyway,
         //       and the code doing the commit down below assumes our capacity is page aligned.
         Arena->Capacity = AlignPow2(Arena->Capacity, G_Platform.PageSize);
-        Arena->Base = (char*)G_Platform.Reserve(Arena->Capacity, MemFlag_NoLeakCheck, Tag);
+        Arena->Base = (char *)G_Platform.Reserve(Arena->Capacity, MemFlag_NoLeakCheck, Tag);
     }
 
     usize AlignOffset = GetAlignOffset(Arena, Align);
@@ -152,15 +154,15 @@ PushSize_(arena *Arena, usize Size, usize Align, b32 Clear, const char *Tag)
     return Result;
 }
 
-#define BootstrapPushStruct(Type, Member)                                     \
-    BootstrapPushStruct_(sizeof(Type), alignof(Type), offsetof(Type, Member), \
-                         LOCATION_STRING("Bootstrap " #Type "::" #Member))
+#define BootstrapPushStruct(Type, Member)                                             \
+    (Type *)BootstrapPushStruct_(sizeof(Type), alignof(Type), offsetof(Type, Member), \
+                                 LOCATION_STRING("Bootstrap " #Type "::" #Member))
 internal inline void *
 BootstrapPushStruct_(usize Size, usize Align, usize ArenaOffset, const char *Tag)
 {
     arena Arena = { 0 };
-    void* State = PushSize_(&Arena, Size, Align, true, Tag);
-    *(arena*)((char *)State + ArenaOffset) = Arena;
+    void *State = PushSize_(&Arena, Size, Align, true, Tag);
+    *(arena *)((char *)State + ArenaOffset) = Arena;
     return State;
 }
 
