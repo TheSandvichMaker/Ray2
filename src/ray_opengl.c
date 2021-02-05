@@ -58,14 +58,14 @@ GLSetScreenspace(int W, int H)
 }
 
 internal GLuint
-GLLoadTexture(opengl_info *Info, int W, int H, void *Data)
+GLLoadTexture(int W, int H, void *Data)
 {
     GLuint TextureHandle;
     glGenTextures(1, &TextureHandle);
     glBindTexture(GL_TEXTURE_2D, TextureHandle);
     glTexImage2D(GL_TEXTURE_2D,
                  0,
-                 Info->DefaultInternalTextureFormat,
+                 OpenGL.DefaultInternalTextureFormat,
                  W, H,
                  0,
                  GL_RGBA,
@@ -87,56 +87,6 @@ GLUnloadTexture(GLuint Handle)
 }
 
 internal void
-GLDisplayBitmap(int W, int H, void *Data, int WindowW, int WindowH, GLuint BlitTextureHandle)
-{
-    glViewport(0, 0, WindowW, WindowH);
-    glScissor(0, 0, WindowW, WindowH);
-
-    glBindTexture(GL_TEXTURE_2D, BlitTextureHandle);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_SRGB8_ALPHA8, W, H, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, Data);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-    glClearColor(1, 0, 1, 1);
-    glClear(GL_COLOR_BUFFER_BIT);
-
-    glMatrixMode(GL_TEXTURE);
-    glLoadIdentity();
-
-    glMatrixMode(GL_MODELVIEW);
-    glLoadIdentity();
-
-    GLSetScreenspace(WindowW, WindowH);
-
-    glDisable(GL_BLEND);
-    glEnable(GL_TEXTURE_2D);
-
-    glBegin(GL_TRIANGLES);
-    glColor4f(1, 1, 1, 1);
-
-    glTexCoord2f(0, 0);
-    glVertex2f(0, 0);
-    glTexCoord2f(1, 0);
-    glVertex2f(W, 0);
-    glTexCoord2f(1, 1);
-    glVertex2f(W, H);
-
-    glTexCoord2f(0, 0);
-    glVertex2f(0, 0);
-    glTexCoord2f(1, 1);
-    glVertex2f(W, H);
-    glTexCoord2f(0, 1);
-    glVertex2f(0, H);
-
-    glEnd();
-
-    glDisable(GL_TEXTURE_2D);
-    glEnable(GL_BLEND);
-}
-
-internal void
 GLCompileShaders(void)
 {
     GLint Success;
@@ -144,10 +94,16 @@ GLCompileShaders(void)
 
     const char *VertexShaderSource = 
         "#version 330 core\n"
-        "layout (location = 0) in vec3 aPos;\n"
+        "layout (location = 0) in vec3 InVertexP;\n"
+        "layout (location = 1) in vec4 InVertexColor;\n"
+        "layout (location = 2) in vec2 InTexCoord;\n"
+        "out vec4 VertexColor;\n"
+        "out vec2 TexCoord;\n"
         "void main()\n"
         "{\n"
-        "    gl_Position = vec4(aPos.x, aPos.y, aPos.z, 1.0);\n"
+        "    gl_Position = vec4(InVertexP.xyz, 1.0f);\n"
+        "    VertexColor = InVertexColor;\n"
+        "    TexCoord = InTexCoord;\n"
         "}\n";
 
     GLuint VertexShader = glCreateShader(GL_VERTEX_SHADER);
@@ -163,10 +119,13 @@ GLCompileShaders(void)
 
     const char *FragmentShaderSource = 
         "#version 330 core\n"
-        "out vec4 FragColor;"
+        "out vec4 FragColor;\n"
+        "in vec4 VertexColor;\n"
+        "in vec2 TexCoord;\n"
+        "uniform sampler2D Texture;\n"
         "void main()\n"
         "{\n"
-        "    FragColor = vec4(1.0f, 0.5f, 0.25f, 1.0f);\n"
+        "    FragColor = VertexColor*texture(Texture, TexCoord);\n"
         "}\n";
 
     GLuint FragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
@@ -198,21 +157,53 @@ GLCompileShaders(void)
     glDeleteShader(FragmentShader);
 }
 
-global float Triangles[] =
+typedef struct textured_vertex
 {
-    -0.5f, -0.5f, 0.0f,
-     0.5f, -0.5f, 0.0f,
-     0.5f,  0.5f, 0.0f,
-};
+    v3 P;
+    v4 Color;
+    v2 UV;
+} textured_vertex;
 
 internal void
-GLTestTriangle(void)
+GLDisplayBitmap(int W, int H, void *Pixels)
 {
     glClearColor(1, 0, 1, 1);
     glClear(GL_COLOR_BUFFER_BIT);
 
+    glBindTexture(GL_TEXTURE_2D, OpenGL.DisplayImageTextureHandle);
+    glTexImage2D(GL_TEXTURE_2D,
+                 0,
+                 OpenGL.DefaultInternalTextureFormat,
+                 W, H,
+                 0,
+                 GL_BGRA_EXT,
+                 GL_UNSIGNED_BYTE,
+                 Pixels);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    textured_vertex Quad[] =
+    {
+        { .P = { -1, -1, 0 }, .Color = { 1, 1, 1, 1 }, .UV = { 0, 0 } },
+        { .P = {  1, -1, 0 }, .Color = { 1, 1, 1, 1 }, .UV = { 1, 0 } },
+        { .P = {  1,  1, 0 }, .Color = { 1, 1, 1, 1 }, .UV = { 1, 1 } },
+        { .P = { -1, -1, 0 }, .Color = { 1, 1, 1, 1 }, .UV = { 0, 0 } },
+        { .P = {  1,  1, 0 }, .Color = { 1, 1, 1, 1 }, .UV = { 1, 1 } },
+        { .P = { -1,  1, 0 }, .Color = { 1, 1, 1, 1 }, .UV = { 0, 1 } },
+    };
+    glBufferData(GL_ARRAY_BUFFER, sizeof(Quad), Quad, GL_STREAM_DRAW);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(textured_vertex), (void *)offsetof(textured_vertex, P));
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(textured_vertex), (void *)offsetof(textured_vertex, Color));
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(textured_vertex), (void *)offsetof(textured_vertex, UV));
+    glEnableVertexAttribArray(2);
+
     glUseProgram(OpenGL.ShaderProgram);
-    glDrawArrays(GL_TRIANGLES, 0, 3);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
 }
 
 internal
@@ -226,9 +217,9 @@ GL_DEBUG_CALLBACK(GLDebugCallback)
         char *SeverityString = "Unexpected Severity";
         switch (Severity)
         {
-            case GL_DEBUG_SEVERITY_LOW   : { SeverityString = "Low"; } break;
-            case GL_DEBUG_SEVERITY_MEDIUM: { SeverityString = "Medium"; } break;
-            case GL_DEBUG_SEVERITY_HIGH  : { SeverityString = "High"; } break;
+            case GL_DEBUG_SEVERITY_LOW    : { SeverityString = "Low";    } break;
+            case GL_DEBUG_SEVERITY_MEDIUM : { SeverityString = "Medium"; } break;
+            case GL_DEBUG_SEVERITY_HIGH   : { SeverityString = "High";   } break;
         }
         fprintf(stderr, "OpenGL Error (Severity: %s): %s\n", SeverityString, ErrorMessage);
         Assert(!"OpenGL Error Encountered!");
@@ -236,9 +227,9 @@ GL_DEBUG_CALLBACK(GLDebugCallback)
 }
 
 internal void
-GLInit(opengl_info *Info)
+GLInit(void)
 {
-    Info->DefaultInternalTextureFormat = GL_SRGB8_ALPHA8;
+    OpenGL.DefaultInternalTextureFormat = GL_SRGB8_ALPHA8;
     glEnable(GL_FRAMEBUFFER_SRGB);
 
     GLuint VAO;
@@ -246,12 +237,9 @@ GLInit(opengl_info *Info)
     glBindVertexArray(VAO);
 
     glGenBuffers(1, &OpenGL.VBO);
-
     glBindBuffer(GL_ARRAY_BUFFER, OpenGL.VBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(Triangles), Triangles, GL_STATIC_DRAW);
 
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3*sizeof(float), (void *)0);
-    glEnableVertexAttribArray(0);
+    glGenTextures(1, &OpenGL.DisplayImageTextureHandle);
 
     GLCompileShaders();
 

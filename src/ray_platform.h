@@ -127,10 +127,10 @@ typedef intptr_t  ssize;
 
 #define Milliseconds(seconds) ((seconds) / 1000.0f)
 
-#define U64FromPtr(p) (u64)(uintptr_t)(p)
-
 #define alignof(x) _Alignof(x)
 // #define offsetof(Type, M) (usize)((char*)&((Type*)0)->M - (char*)0)
+
+#define always_inline __attribute__((always_inline))
 
 //
 // Assert
@@ -153,13 +153,20 @@ enum
     MemFlag_NoLeakCheck = 0x1,
 };
 
-typedef struct platform_api {
+typedef struct platform_api
+{
     void* (*Reserve)(usize Size, u32 Flags, const char *Tag);
     void* (*Commit)(usize Size, void *Pointer);
     void* (*Allocate)(usize Size, u32 Flags, const char *Tag);
     void  (*Deallocate)(void *Pointer);
     usize PageSize;
 } platform_api;
+
+typedef struct platform_backbuffer
+{
+    int W, H;
+    u32 *Pixels;  // NOTE: Stored BGRA
+} platform_backbuffer;
 
 //
 // App API
@@ -173,7 +180,7 @@ typedef struct app_init_params {
     const char* WindowTitle;
     int WindowX, WindowY;
     int WindowW, WindowH;
-    void (*AppTick)(platform_api PlatformAPI, app_input *Input);
+    void (*AppTick)(platform_api PlatformAPI, app_input *Input, platform_backbuffer *Backbuffer);
 } app_init_params;
 
 void AppEntry(app_init_params *Params);

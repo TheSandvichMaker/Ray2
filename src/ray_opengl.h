@@ -43,7 +43,8 @@ typedef ptrdiff_t GLsizeiptr;
     _(GL_EXT_framebuffer_sRGB) \
     _(GL_ARB_framebuffer_sRGB)
 
-typedef struct opengl_info {
+typedef struct opengl_info
+{
     char *Vendor;
     char *Renderer;
     char *Version;
@@ -53,15 +54,24 @@ typedef struct opengl_info {
     int MinorVersion;
     int BabyVersion;
 
-    GLuint DefaultInternalTextureFormat;
-
     MY_GL_EXTENSIONS(GL_DECLARE_EXTENSION_STRUCT_MEMBER)
 } opengl_info;
 
-typedef struct opengl_state {
+typedef struct opengl_state
+{
     GLuint VBO;
     GLuint ShaderProgram;
+
+    GLuint DefaultInternalTextureFormat;
+    GLuint DisplayImageTextureHandle;
 } opengl_state;
+
+#if 0
+typedef struct opengl_program_interface
+{
+    void (*
+};
+#endif
 
 global opengl_state OpenGL;
 

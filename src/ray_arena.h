@@ -15,6 +15,26 @@ ZeroSize(usize SizeInit, void *DataInit)
 #define ZeroStruct(Struct) ZeroSize(sizeof(*(Struct)), Struct)
 #define ZeroArray(Count, Data) ZeroSize(sizeof(*(Data))*(Count), Data)
 
+internal bool
+MemoryIsEqual(usize Count, void *AInit, void *BInit)
+{
+    char *A = (char *)AInit;
+    char *B = (char *)BInit;
+
+    bool Result = true;
+    while (Count--)
+    {
+        if (*A++ != *B++)
+        {
+            Result = false;
+            break;
+        }
+    }
+    return Result;
+}
+
+#define StructsAreEqual(A, B) (Assert(sizeof(*(A)) == sizeof(*(B))), MemoryIsEqual(sizeof(*(A)), A, B))
+
 #define DEFAULT_ARENA_CAPACITY Gigabytes(8)
 
 typedef struct arena
@@ -194,9 +214,9 @@ EndTemporaryMemory(temporary_memory Temp)
     }
 }
 
-#define ScopedMemory(Arena)                                       \
-    for (temporary_memory TempMem_ = BeginTemporaryMemory(Arena); \
-         TempMem_.Arena;                                          \
+#define ScopedMemory(TempArena)                                       \
+    for (temporary_memory TempMem_ = BeginTemporaryMemory(TempArena); \
+         TempMem_.Arena;                                              \
          EndTemporaryMemory(TempMem_), TempMem_.Arena = 0)
 
 #endif /* RAY_ARENA_H */

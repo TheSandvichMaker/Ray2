@@ -7,6 +7,7 @@
 
 global platform_api G_Platform;
 
+#include "ray_math.h"
 #include "ray_arena.h"
 #include "ray_opengl.h"
 

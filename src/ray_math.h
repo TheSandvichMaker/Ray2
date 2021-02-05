@@ -40,15 +40,47 @@ V4Scalar(float Scalar)
 
 #define Square(x) ((x)*(x))
 
+//
+// Overloaded Functions
+//
+
 static inline float
 SquareRootF(float A)
 {
     return sqrtf(A);
 }
 
-//
-// Overloaded Functions
-//
+static inline v2
+SquareRootV2(v2 A)
+{
+    v2 Result;
+    Result.x = SquareRootF(A.x);
+    Result.y = SquareRootF(A.y);
+    return Result;
+}
+
+static inline v3
+SquareRootV3(v3 A)
+{
+    v3 Result;
+    Result.x = SquareRootF(A.x);
+    Result.y = SquareRootF(A.y);
+    Result.z = SquareRootF(A.z);
+    return Result;
+}
+
+static inline v4
+SquareRootV4(v4 A)
+{
+    v4 Result;
+    Result.x = SquareRootF(A.x);
+    Result.y = SquareRootF(A.y);
+    Result.z = SquareRootF(A.z);
+    Result.w = SquareRootF(A.w);
+    return Result;
+}
+
+#define SquareRoot(A) _Generic((A), float: SquareRootF, v2: SquareRootV2, v3: SquareRootV3, v4: SquareRootV4)(A)
 
 static inline float
 MinF(float A, float B)
@@ -185,7 +217,7 @@ LengthSqV4(v4 A)
 }
 
 #define LengthSq(A) _Generic((A), v2: LengthSqV2, v3: LengthSqV3, v4: LengthSqV4)(A)
-#define Length(A) SquareRoot(LengthSq(A))
+#define Length(A) SquareRootF(LengthSq(A))
 #define Normalize(A) ((1.0f / Length(A))*(A))
 #define Reflect(A, B) ((A) - 2.0f*Dot(A, B)*(B))
 #define Lerp(A, B, t) ((1.0f - t)*(A) + (B))

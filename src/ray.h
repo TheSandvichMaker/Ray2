@@ -15,7 +15,7 @@ typedef struct plane {
 
 typedef struct sphere {
     v3 P;
-    f32 R;
+    f32 r;
 } sphere;
 
 typedef struct scene {

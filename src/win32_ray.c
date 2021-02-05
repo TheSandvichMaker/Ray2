@@ -2,6 +2,9 @@
 
 #include <stdio.h>
 
+__declspec(dllexport) unsigned long NvOptimusEnablement        = 1;
+__declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
+
 global b32 G_Running = true;
 global win32_state G_Win32State;
 global LARGE_INTEGER G_PerfFreq;
@@ -386,7 +389,7 @@ WGLInit(HDC WindowDC, wgl_info *WGLInfo, opengl_info *OpenGLInfo)
 
         GL_FUNCTIONS(WGL_LOAD_FUNCTION)
         GLGetInfo(OpenGLInfo);
-        GLInit(OpenGLInfo);
+        GLInit();
     }
 
     glFinish();
@@ -462,15 +465,13 @@ main(int argc, char **argv)
     };
     AppEntry(&Params);
 
-    if ((Params.WindowX != CW_USEDEFAULT) ||
-        (Params.WindowY != CW_USEDEFAULT) ||
-        (Params.WindowW != CW_USEDEFAULT) ||
+    if ((Params.WindowW != CW_USEDEFAULT) &&
         (Params.WindowH != CW_USEDEFAULT))
     {
-        RECT WindowRect = { Params.WindowX, Params.WindowY, Params.WindowW, Params.WindowH };
+        RECT WindowRect = { 0, 0, Params.WindowW, Params.WindowH };
         AdjustWindowRectEx(&WindowRect, WS_OVERLAPPEDWINDOW, false, 0);
         
-        Win32RectSpecs(WindowRect, &Params.WindowX, &Params.WindowY, &Params.WindowW, &Params.WindowH);
+        Win32RectSpecs(WindowRect, 0, 0, &Params.WindowW, &Params.WindowH);
     }
     
     WNDCLASSA WindowClass =
@@ -511,22 +512,19 @@ main(int argc, char **argv)
         ExitWithError("Could Not Initialize OpenGL");
     }
 
-    GLuint BlitHandle;
-    glGenTextures(1, &BlitHandle);
-
-    int TestW = 1280;
-    int TestH = 720;
-    u32 *TestPixels = Win32Allocate(sizeof(u32)*TestW*TestH, MemFlag_NoLeakCheck, LOCATION_STRING());
-
-    for (int Y = 0; Y < TestH; ++Y)
-    for (int X = 0; X < TestW; ++X)
-    {
-        TestPixels[Y*TestW + X] = (255 << 24)|(((X & 255) << 16)|((Y & 255) << 8));
-    }
+    fprintf(stderr, "Initialized OpenGL:\n");
+    fprintf(stderr, "    Vendor                : %s\n", OpenGLInfo.Vendor);
+    fprintf(stderr, "    Renderer              : %s\n", OpenGLInfo.Renderer);
+    fprintf(stderr, "    Version               : %s\n", OpenGLInfo.Version);
+    fprintf(stderr, "    ShadingLanguageVersion: %s\n", OpenGLInfo.ShadingLanguageVersion);
+    fprintf(stderr, "\n");
 
     ShowWindow(WindowHandle, SW_SHOWNORMAL);
 
     app_input Input = { 0 };
+
+    RECT PrevClientRect = { 0 };
+    platform_backbuffer Backbuffer = { 0 };
 
     while (G_Running)
     {
@@ -551,16 +549,30 @@ main(int argc, char **argv)
             }
         }
 
-        Params.AppTick(API, &Input);
-
         RECT ClientRect;
         GetClientRect(WindowHandle, &ClientRect);
 
         int ClientW, ClientH;
         Win32RectSpecs(ClientRect, 0, 0, &ClientW, &ClientH);
 
-        GLTestTriangle();
-        // GLDisplayBitmap(TestW, TestH, TestPixels, ClientW, ClientH, BlitHandle);
+        if (!StructsAreEqual(&ClientRect, &PrevClientRect))
+        {
+            if (Backbuffer.Pixels)
+            {
+                Win32Deallocate(Backbuffer.Pixels);
+            }
+            
+            Backbuffer.W = ClientW;
+            Backbuffer.H = ClientH;
+            Backbuffer.Pixels = Win32Allocate(sizeof(*Backbuffer.Pixels)*Backbuffer.W*Backbuffer.H,
+                                              0,
+                                              LOCATION_STRING("Win32 Backbuffer"));
+            PrevClientRect = ClientRect;
+        }
+
+        Params.AppTick(API, &Input, &Backbuffer);
+
+        GLDisplayBitmap(Backbuffer.W, Backbuffer.H, Backbuffer.Pixels);
 
         SwapBuffers(WindowDC);
 
@@ -568,6 +580,11 @@ main(int argc, char **argv)
         {
             G_Running = false;
         }
+    }
+
+    if (Backbuffer.Pixels)
+    {
+        Win32Deallocate(Backbuffer.Pixels);
     }
 
     bool LeakedMemory = false;
