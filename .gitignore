@@ -1,0 +1,13 @@
+.vs
+.vs/*
+*.exe
+*.exp
+*.lib
+*.dll
+*.ilk
+*.pdb
+scratch
+.nvimlog
+tags
+build
+build/*
