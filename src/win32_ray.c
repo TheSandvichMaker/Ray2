@@ -16,7 +16,7 @@ global LARGE_INTEGER G_PerfFreq;
 internal void *
 Win32Reserve(usize Size, u32 Flags, const char *Tag)
 {
-    usize PageSize = G_Platform.PageSize;
+    usize PageSize = Platform.PageSize;
     usize TotalSize = PageSize + Size;
 
     win32_allocation_header *Header = VirtualAlloc(0, TotalSize, MEM_RESERVE, PAGE_NOACCESS);
@@ -58,11 +58,88 @@ Win32Deallocate(void *Pointer)
 {
     if (Pointer)
     {
-        win32_allocation_header *Header = (win32_allocation_header *)((char *)Pointer - G_Platform.PageSize);
+        win32_allocation_header *Header = (win32_allocation_header *)((char *)Pointer - Platform.PageSize);
         Header->Prev->Next = Header->Next;
         Header->Next->Prev = Header->Prev;
         VirtualFree(Header, 0, MEM_RELEASE);
     }
+}
+
+internal platform_semaphore_handle
+Win32CreateSemaphore(int InitialCount, int MaxCount)
+{
+    HANDLE Win32Handle = CreateSemaphoreA(NULL, InitialCount, MaxCount, NULL);
+
+    platform_semaphore_handle Result =
+    {
+        .Opaque = (void *)Win32Handle,
+    };
+
+    return Result;
+}
+
+internal void
+Win32WaitOnSemaphore(platform_semaphore_handle Handle)
+{
+    HANDLE Win32Handle = (HANDLE)Handle.Opaque;
+    WaitForSingleObject(Win32Handle, INFINITE);
+}
+
+internal void
+Win32ReleaseSemaphore(platform_semaphore_handle Handle, int Count, int *PreviousCount)
+{
+    HANDLE Win32Handle = (HANDLE)Handle.Opaque;
+    LONG PreviousCountLong;
+    ReleaseSemaphore(Win32Handle, Count, &PreviousCountLong);
+    if (PreviousCount) *PreviousCount = (int)PreviousCountLong;
+}
+
+typedef struct win32_thread_data
+{
+    platform_semaphore_handle Semaphore;
+    platform_thread_proc Proc;
+    void *UserData;
+} win32_thread_data;
+
+internal DWORD WINAPI
+Win32ThreadProc(void *Param)
+{
+    win32_thread_data *Win32Data = (win32_thread_data *)Param;
+
+    platform_semaphore_handle Semaphore = Win32Data->Semaphore;
+    platform_thread_proc Proc = Win32Data->Proc;
+    void *UserData = Win32Data->UserData;
+
+    Proc(UserData, Semaphore);
+
+    return 0;
+}
+
+internal platform_thread_handle
+Win32CreateThread(platform_thread_proc Proc, void *UserData)
+{
+    local_persist platform_semaphore_handle ThreadStartSemaphore;
+    if (!ThreadStartSemaphore.Opaque)
+    {
+        ThreadStartSemaphore = Win32CreateSemaphore(0, 1);
+    }
+
+    win32_thread_data Win32ThreadData =
+    {
+        .Proc      = Proc,
+        .UserData  = UserData,
+        .Semaphore = ThreadStartSemaphore,
+    };
+
+    HANDLE Win32Handle = CreateThread(NULL, 0, Win32ThreadProc, &Win32ThreadData, 0, NULL);
+    platform_thread_handle Result =
+    {
+        .Opaque = (void *)Win32Handle,
+    };
+
+    Win32WaitOnSemaphore(Win32ThreadData.Semaphore);
+
+    return Result;
 }
 
 //
@@ -447,13 +524,20 @@ main(int argc, char **argv)
 
     platform_api API =
     {
-        .Reserve    = Win32Reserve,
-        .Commit     = Win32Commit,
-        .Allocate   = Win32Allocate,
-        .Deallocate = Win32Deallocate,
-        .PageSize   = SystemInfo.dwPageSize,
+        .Reserve          = Win32Reserve,
+        .Commit           = Win32Commit,
+        .Allocate         = Win32Allocate,
+        .Deallocate       = Win32Deallocate,
+        .PageSize         = SystemInfo.dwPageSize,
+        .CreateThread     = Win32CreateThread,
+        .CreateSemaphore  = Win32CreateSemaphore,
+        .WaitOnSemaphore  = Win32WaitOnSemaphore,
+        .ReleaseSemaphore = Win32ReleaseSemaphore,
+        .LogicalCoreCount = 8,
     };
-    G_Platform = API;
+    Platform = API;
+
+    app_links Links = AppLinks();
 
     app_init_params Params =
     {
@@ -463,7 +547,7 @@ main(int argc, char **argv)
         .WindowW = CW_USEDEFAULT,
         .WindowH = CW_USEDEFAULT,
     };
-    AppEntry(&Params);
+    Links.AppInit(&Params);
 
     if ((Params.WindowW != CW_USEDEFAULT) &&
         (Params.WindowH != CW_USEDEFAULT))
@@ -570,7 +654,7 @@ main(int argc, char **argv)
             PrevClientRect = ClientRect;
         }
 
-        Params.AppTick(API, &Input, &Backbuffer);
+        Links.AppTick(API, &Input, &Backbuffer);
 
         GLDisplayBitmap(Backbuffer.W, Backbuffer.H, Backbuffer.Pixels);
 

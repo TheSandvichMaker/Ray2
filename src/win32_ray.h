@@ -5,7 +5,9 @@
 #include <windows.h>
 #include <gl/gl.h>
 
-global platform_api G_Platform;
+#undef CreateSemaphore
+
+global platform_api Platform;
 
 #include "ray_math.h"
 #include "ray_arena.h"

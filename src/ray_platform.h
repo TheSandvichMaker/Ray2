@@ -148,6 +148,24 @@ typedef intptr_t  ssize;
 #define FILE_AND_LINE_STRING FILE_AND_LINE_STRING_(__FILE__, __LINE__)
 #define LOCATION_STRING(...) FILE_AND_LINE_STRING " (" __VA_ARGS__ ")"
 
+typedef struct platform_backbuffer
+{
+    u32 W, H;
+    u32 *Pixels;  // NOTE: Stored BGRA
+} platform_backbuffer;
+
+typedef struct platform_semaphore_handle
+{
+    void *Opaque;
+} platform_semaphore_handle;
+
+typedef struct platform_thread_handle
+{
+    void *Opaque;
+} platform_thread_handle;
+
+typedef void (*platform_thread_proc)(void *UserData, platform_semaphore_handle ParentSemaphore);
+
 enum
 {
     MemFlag_NoLeakCheck = 0x1,
@@ -155,39 +173,47 @@ enum
 
 typedef struct platform_api
 {
-    void* (*Reserve)(usize Size, u32 Flags, const char *Tag);
-    void* (*Commit)(usize Size, void *Pointer);
-    void* (*Allocate)(usize Size, u32 Flags, const char *Tag);
-    void  (*Deallocate)(void *Pointer);
+    void *(*Reserve)(usize Size, u32 Flags, const char *Tag);
+    void *(*Commit)(usize Size, void *Pointer);
+    void *(*Allocate)(usize Size, u32 Flags, const char *Tag);
+    void (*Deallocate)(void *Pointer);
+    platform_thread_handle (*CreateThread)(platform_thread_proc Proc, void *UserData);
+    platform_semaphore_handle (*CreateSemaphore)(int InitialCount, int MaxCount);
+    void (*WaitOnSemaphore)(platform_semaphore_handle Handle);
+    void (*ReleaseSemaphore)(platform_semaphore_handle Handle, int Count, int *PreviousCount);
     usize PageSize;
+    u32 LogicalCoreCount;
 } platform_api;
-
-typedef struct platform_backbuffer
-{
-    int W, H;
-    u32 *Pixels;  // NOTE: Stored BGRA
-} platform_backbuffer;
 
 //
 // App API
 //
 
-typedef struct app_input {
+typedef struct app_input
+{
     b32 ExitRequested; 
 } app_input;
 
-typedef struct app_init_params {
-    const char* WindowTitle;
+typedef struct app_init_params
+{
+    const char *WindowTitle;
     int WindowX, WindowY;
     int WindowW, WindowH;
-    void (*AppTick)(platform_api PlatformAPI, app_input *Input, platform_backbuffer *Backbuffer);
 } app_init_params;
 
-void AppEntry(app_init_params *Params);
+typedef struct app_links
+{
+    void (*AppInit)(app_init_params *Params);
+    void (*AppTick)(platform_api PlatformAPI, app_input *Input, platform_backbuffer *Backbuffer);
+} app_links;
+
+app_links AppLinks(void);
 
 //
 // Threading
 //
+
+#define MEMORY_BARRIER __atomic_thread_fence(__ATOMIC_ACQ_REL)
 
 internal inline u32
 AtomicAddU32(volatile u32 *Dest, s32 Value) {

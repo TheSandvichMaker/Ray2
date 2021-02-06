@@ -49,7 +49,7 @@ typedef struct arena
 internal inline usize
 GetAlignOffset(arena *Arena, usize Align)
 {
-    usize Offset = (usize)Arena->Base & (Align - 1);
+    usize Offset = (usize)(Arena->Base + Arena->Used) & (Align - 1);
     if (Offset)
     {
         Offset = Align - Offset;
@@ -85,7 +85,7 @@ internal inline void
 DeallocateArena(arena *Arena)
 {
     Assert(Arena->TempCount == 0);
-    G_Platform.Deallocate(Arena->Base);
+    Platform.Deallocate(Arena->Base);
     ZeroStruct(Arena);
 }
 
@@ -145,8 +145,8 @@ PushSize_(arena *Arena, usize Size, usize Align, b32 Clear, const char *Tag)
     {
         // NOTE: Let's align up to page size because that's the minimum allocation granularity anyway,
         //       and the code doing the commit down below assumes our capacity is page aligned.
-        Arena->Capacity = AlignPow2(Arena->Capacity, G_Platform.PageSize);
-        Arena->Base = (char *)G_Platform.Reserve(Arena->Capacity, MemFlag_NoLeakCheck, Tag);
+        Arena->Capacity = AlignPow2(Arena->Capacity, Platform.PageSize);
+        Arena->Base = (char *)Platform.Reserve(Arena->Capacity, MemFlag_NoLeakCheck, Tag);
     }
 
     usize AlignOffset = GetAlignOffset(Arena, Align);
@@ -158,8 +158,8 @@ PushSize_(arena *Arena, usize Size, usize Align, b32 Clear, const char *Tag)
 
     if (Arena->Committed < (Arena->Used + AlignedSize))
     {
-        usize CommitSize = AlignPow2(AlignedSize, G_Platform.PageSize);
-        G_Platform.Commit(CommitSize, Arena->Base + Arena->Committed);
+        usize CommitSize = AlignPow2(AlignedSize, Platform.PageSize);
+        Platform.Commit(CommitSize, Arena->Base + Arena->Committed);
         Arena->Committed += CommitSize;
         Assert(Arena->Committed >= (Arena->Used + AlignedSize));
     }
