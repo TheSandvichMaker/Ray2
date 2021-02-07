@@ -11,3 +11,5 @@ scratch
 tags
 build
 build/*
+generated
+generated/*
