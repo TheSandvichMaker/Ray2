@@ -44,13 +44,15 @@ RayIntersectSphere(v3 RayP, v3 RayD, v3 SphereO, f32 SphereR, f32 *tOut)
     return Result;
 }
 
+global f32 GlobalTimer;
+
 internal void
 CastRays(scene *Scene, int MinX, int MinY, int OnePastMaxX, int OnePastMaxY, platform_backbuffer *Backbuffer)
 {
     f32 RcpW = 1.0f / (f32)Backbuffer->W;
     f32 RcpH = 1.0f / (f32)Backbuffer->H;
 
-    v3 CamP = V3(0, 2, -10);
+    v3 CamP = V3(0, 2 + SinF(2*GlobalTimer), -10);
     v3 CamX = V3(1, 0, 0);
     v3 CamY = V3(0, 1, 0);
     v3 CamZ = V3(0, 0, -1);
@@ -189,7 +191,6 @@ ManageDispatch(thread_dispatch *Dispatch)
 internal void
 RayInit(app_init_params *Params)
 {
-    Params->WindowTitle = "Hello Ray2";
     Params->WindowW = 512;
     Params->WindowH = 512;
 }
@@ -220,6 +221,8 @@ RayTick(platform_api API, app_input *Input, platform_backbuffer *Backbuffer)
             .r = 1.0f,
         };
     }
+
+    GlobalTimer += 1.0f / 240.0f;
 
     thread_dispatch *Dispatch = &RayState->Dispatch;
     ManageDispatch(Dispatch);

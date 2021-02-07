@@ -487,6 +487,21 @@ Win32RectSpecs(RECT Rect, int *X, int *Y, int *W, int *H)
     if (H) *H = Rect.bottom - Rect.top;
 }
 
+internal LARGE_INTEGER
+Win32GetClock()
+{
+    LARGE_INTEGER Result;
+    QueryPerformanceCounter(&Result);
+    return Result;
+}
+
+internal f64
+Win32GetSecondsElapsed(LARGE_INTEGER Start, LARGE_INTEGER End)
+{
+    f64 Result = (f64)(End.QuadPart - Start.QuadPart) / (f64)G_PerfFreq.QuadPart;
+    return Result;
+}
+
 internal CALLBACK LRESULT
 Win32WindowProc(HWND Window, UINT Message, WPARAM wParam, LPARAM lParam)
 {
@@ -610,6 +625,8 @@ main(int argc, char **argv)
     RECT PrevClientRect = { 0 };
     platform_backbuffer Backbuffer = { 0 };
 
+    LARGE_INTEGER StartClock = Win32GetClock();
+
     while (G_Running)
     {
         bool QuitRequested = false;
@@ -659,6 +676,16 @@ main(int argc, char **argv)
         GLDisplayBitmap(Backbuffer.W, Backbuffer.H, Backbuffer.Pixels);
 
         SwapBuffers(WindowDC);
+
+        LARGE_INTEGER EndClock = Win32GetClock();
+        f64 SecondsElapsed = Win32GetSecondsElapsed(StartClock, EndClock);
+        StartClock = EndClock;
+
+        char TitleBuffer[256];
+        snprintf(TitleBuffer, sizeof(TitleBuffer), "Ray2 - %fms/f, %ffps",
+                 1000.0*SecondsElapsed,
+                 1.0 / SecondsElapsed);
+        SetWindowTextA(WindowHandle, TitleBuffer);
 
         if (QuitRequested)
         {

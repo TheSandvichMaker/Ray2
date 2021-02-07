@@ -38,7 +38,17 @@ V4Scalar(float Scalar)
 // Scalar Functions
 //
 
-#define Square(x) ((x)*(x))
+static inline float
+SquareF(float A)
+{
+    return A*A;
+}
+
+static inline float
+SinF(float A)
+{
+    return sinf(A);
+}
 
 //
 // Overloaded Functions
