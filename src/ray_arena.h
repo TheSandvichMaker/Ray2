@@ -180,7 +180,7 @@ PushSize_(arena *Arena, usize Size, usize Align, b32 Clear, const char *Tag)
 internal inline void *
 BootstrapPushStruct_(usize Size, usize Align, usize ArenaOffset, const char *Tag)
 {
-    arena Arena = { 0 };
+    arena Arena = {};
     void *State = PushSize_(&Arena, Size, Align, true, Tag);
     *(arena *)((char *)State + ArenaOffset) = Arena;
     return State;

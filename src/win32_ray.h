@@ -13,18 +13,18 @@ global platform_api Platform;
 #include "ray_arena.h"
 #include "ray_opengl.h"
 
-typedef struct win32_allocation_header
+struct win32_allocation_header
 {
-    struct win32_allocation_header *Next, *Prev;
+    win32_allocation_header *Next, *Prev;
     usize Size;
     char *Base;
     u32 Flags;
     const char *Tag;
-} win32_allocation_header;
+};
 
-typedef struct win32_state
+struct win32_state
 {
     win32_allocation_header AllocationSentinel;
-} win32_state;
+};
 
 #endif /* WIN32_RAY_H */

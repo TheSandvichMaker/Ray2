@@ -4,7 +4,7 @@
 #define EPSILON 0.001f
 
 internal always_inline bool
-RayIntersectPlane(v3 RayP, v3 RayD, v3 PlaneNormal, f32 PlaneDistance, f32 *tOut)
+RayIntersectPlane(vec3 RayP, vec3 RayD, vec3 PlaneNormal, f32 PlaneDistance, f32 *tOut)
 {
     bool Result = false;
 
@@ -20,17 +20,17 @@ RayIntersectPlane(v3 RayP, v3 RayD, v3 PlaneNormal, f32 PlaneDistance, f32 *tOut
 }
 
 internal always_inline bool
-RayIntersectSphere(v3 RayP, v3 RayD, v3 SphereO, f32 SphereR, f32 *tOut)
+RayIntersectSphere(vec3 RayP, vec3 RayD, vec3 SphereO, f32 SphereR, f32 *tOut)
 {
     bool Result = false;
 
-    v3 SphereRelO = RayP - SphereO;
+    vec3 SphereRelO = RayP - SphereO;
     f32 B = Dot(RayD, SphereRelO);
-    f32 C = LengthSq(SphereRelO) - SphereR*SphereR;
+    f32 C = LengthSquared(SphereRelO) - SphereR*SphereR;
     f32 Discr = (B*B - C);
     if (Discr >= 0)
     {
-        f32 DiscrRoot = SquareRoot(Discr);
+        f32 DiscrRoot = SquareRootF(Discr);
         f32 tN = -B - DiscrRoot;
         f32 tF = -B + DiscrRoot;
         f32 t = (tN >= 0.0f ? tN : tF);
@@ -52,14 +52,14 @@ CastRays(scene *Scene, int MinX, int MinY, int OnePastMaxX, int OnePastMaxY, pla
     f32 RcpW = 1.0f / (f32)Backbuffer->W;
     f32 RcpH = 1.0f / (f32)Backbuffer->H;
 
-    v3 CamP = V3(0, 2 + SinF(2*GlobalTimer), -10);
-    v3 CamX = V3(1, 0, 0);
-    v3 CamY = V3(0, 1, 0);
-    v3 CamZ = V3(0, 0, -1);
+    vec3 CamP = Vec3(0, 2 + SinF(2*GlobalTimer), -10);
+    vec3 CamX = Vec3(1, 0, 0);
+    vec3 CamY = Vec3(0, 1, 0);
+    vec3 CamZ = Vec3(0, 0, -1);
 
     f32 FilmDistance = 1.0f;
-    v2 FilmDim = V2(1.0f, (f32)Backbuffer->H / (f32)Backbuffer->W);
-    v3 FilmP = CamP - CamZ*FilmDistance;
+    vec2 FilmDim = Vec2(1.0f, (f32)Backbuffer->H / (f32)Backbuffer->W);
+    vec3 FilmP = CamP - CamZ*FilmDistance;
 
     for (ssize Y = MinY; Y < OnePastMaxY; ++Y)
     {
@@ -68,8 +68,8 @@ CastRays(scene *Scene, int MinX, int MinY, int OnePastMaxX, int OnePastMaxY, pla
         {
             f32 U = -1.0f + 2.0f*RcpW*(f32)X;
 
-            v3 RayP = CamP;
-            v3 RayD = Normalize((FilmP + FilmDim.x*CamX*U + FilmDim.y*CamY*V) - CamP);
+            vec3 RayP = CamP;
+            vec3 RayD = Normalize((FilmP + FilmDim.X*CamX*U + FilmDim.Y*CamY*V) - CamP);
 
             f32 t = F32_MAX;
 
@@ -97,12 +97,12 @@ CastRays(scene *Scene, int MinX, int MinY, int OnePastMaxX, int OnePastMaxY, pla
     }
 }
 
-typedef struct ray_thread_params
+struct ray_thread_params
 {
     thread_dispatch *Dispatch;
     scene *Scene;
     platform_backbuffer *Backbuffer;
-} ray_thread_params;
+};
 
 internal void
 RayThreadProc(void *UserData, platform_semaphore_handle ParentSemaphore)
@@ -210,14 +210,14 @@ RayTick(platform_api API, app_input *Input, platform_backbuffer *Backbuffer)
 
         scene *Scene = RayState->Scene;
         Scene->Planes[Scene->PlaneCount++] =
-        (plane) {
-            .N = V3(0, 1, 0),
+        {
+            .N = Vec3(0, 1, 0),
             .d = 0.0f,
         };
 
         Scene->Spheres[Scene->SphereCount++] =
-        (sphere) {
-            .P = V3(0, 2, 0),
+        {
+            .P = Vec3(0, 2, 0),
             .r = 1.0f,
         };
     }

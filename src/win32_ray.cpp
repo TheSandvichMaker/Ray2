@@ -19,7 +19,7 @@ Win32Reserve(usize Size, u32 Flags, const char *Tag)
     usize PageSize = Platform.PageSize;
     usize TotalSize = PageSize + Size;
 
-    win32_allocation_header *Header = VirtualAlloc(0, TotalSize, MEM_RESERVE, PAGE_NOACCESS);
+    win32_allocation_header *Header = (win32_allocation_header *)VirtualAlloc(0, TotalSize, MEM_RESERVE, PAGE_NOACCESS);
     VirtualAlloc(Header, PageSize, MEM_COMMIT, PAGE_READWRITE);
 
     Header->Size = TotalSize;
@@ -279,7 +279,7 @@ typedef GL_DEBUG_CALLBACK(gl_debug_proc);
 
 GL_FUNCTIONS(WGL_DECLARE_FUNCTION)
 
-#include "ray_opengl.c"
+#include "ray_opengl.cpp"
 
 #define WGL_FUNCTIONS(_)                                                                            \
     _(BOOL, wglChoosePixelFormatARB, HDC hdc, const int *piAttribIList, const FLOAT *pfAttribFList, \
@@ -318,7 +318,7 @@ WGLSetPixelFormat(HDC WindowDC, wgl_info *WGLInfo)
         };
 
         const int NumberOfExtendedAttributes = 1;
-        int AttributeList[ArrayCount(AlwaysAvailableAttributes) + 2*NumberOfExtendedAttributes + 1] = { 0 };
+        int AttributeList[ArrayCount(AlwaysAvailableAttributes) + 2*NumberOfExtendedAttributes + 1] = {};
 
         usize AttributeCursor = 0;
         for (; AttributeCursor < ArrayCount(AlwaysAvailableAttributes); ++AttributeCursor)
@@ -620,10 +620,10 @@ main(int argc, char **argv)
 
     ShowWindow(WindowHandle, SW_SHOWNORMAL);
 
-    app_input Input = { 0 };
+    app_input Input = {};
 
-    RECT PrevClientRect = { 0 };
-    platform_backbuffer Backbuffer = { 0 };
+    RECT PrevClientRect = {};
+    platform_backbuffer Backbuffer = {};
 
     LARGE_INTEGER StartClock = Win32GetClock();
 
@@ -665,9 +665,9 @@ main(int argc, char **argv)
             
             Backbuffer.W = ClientW;
             Backbuffer.H = ClientH;
-            Backbuffer.Pixels = Win32Allocate(sizeof(*Backbuffer.Pixels)*Backbuffer.W*Backbuffer.H,
-                                              0,
-                                              LOCATION_STRING("Win32 Backbuffer"));
+            Backbuffer.Pixels = (u32 *)Win32Allocate(sizeof(*Backbuffer.Pixels)*Backbuffer.W*Backbuffer.H,
+                                                     0,
+                                                     LOCATION_STRING("Win32 Backbuffer"));
             PrevClientRect = ClientRect;
         }
 

@@ -1,27 +1,19 @@
 #include "md.h"
 #include "md.c"
 
-typedef struct TestStruct
-{
-    char (*test)[256];
-} TestStruct;
-
 int
 main(int argc, char** argv)
 {
+    fprintf(stderr, "Running metaprogram.\n");
+
     MD_Node *first = MD_NilNode();
     MD_Node *last  = MD_NilNode();
-
-    fprintf(stderr, "Running metaprogram.\n");
 
     MD_FileInfo file_info;
     for (MD_FileIter it = { 0 }; MD_FileIterIncrement(&it, MD_S8Lit("*.mc"), &file_info);)
     {
-        if (file_info.filename.size)
-        {
-            MD_Node *root = MD_ParseWholeFile(file_info.filename);
-            MD_PushSibling(&first, &last, MD_NilNode(), root);
-        }
+        MD_Node *root = MD_ParseWholeFile(file_info.filename);
+        MD_PushSibling(&first, &last, MD_NilNode(), root);
     }
 
     if (first != MD_NilNode())

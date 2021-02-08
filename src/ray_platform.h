@@ -5,6 +5,11 @@
 #include <stddef.h>
 #include <emmintrin.h>
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
 //
 // Types
 //
@@ -61,13 +66,11 @@ typedef intptr_t  ssize;
 #define true  1
 #define false 0
 
-#define auto __auto_type
-#define bool _Bool
 #define global static
 #define internal static
 #define local_persist static
 
-#define StaticAssert(expression, message) _Static_assert(expression, message)
+#define StaticAssert(expression, message) static_assert(expression, message)
 
 #define INVALID_CODE_PATH Assert(!"Invalid Code Path");
 #define INVALID_DEFAULT_CASE default: { Assert(!"Invalid Default Case"); } break;
@@ -127,7 +130,7 @@ typedef intptr_t  ssize;
 
 #define Milliseconds(seconds) ((seconds) / 1000.0f)
 
-#define alignof(x) _Alignof(x)
+// #define alignof(x) _Alignof(x)
 // #define offsetof(Type, M) (usize)((char*)&((Type*)0)->M - (char*)0)
 
 #define always_inline __attribute__((always_inline))
@@ -260,5 +263,9 @@ EndTicketMutex(ticket_mutex *Mutex)
 {
     AtomicAddU32(&Mutex->Serving, 1);
 }
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* RAY_PLATFORM_H */

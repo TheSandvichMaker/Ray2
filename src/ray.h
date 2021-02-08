@@ -6,30 +6,31 @@
 global platform_api Platform;
 
 #include "ray_arena.h"
-#include "ray_math.h"
+// #include "ray_math.h"
+#include "ray_handmade_math.h"
 
-typedef struct plane
+struct plane
 {
-    v3 N;
+    vec3 N;
     f32 d;
-} plane;
+};
 
-typedef struct sphere
+struct sphere
 {
-    v3 P;
+    vec3 P;
     f32 r;
-} sphere;
+};
 
-typedef struct scene
+struct scene
 {
     u32 PlaneCount;
     plane Planes[256];
 
     u32 SphereCount;
     sphere Spheres[256];
-} scene;
+};
 
-typedef struct thread_dispatch
+struct thread_dispatch
 {
     u32 ThreadCount;
     platform_semaphore_handle Semaphore;
@@ -37,14 +38,14 @@ typedef struct thread_dispatch
     u32 TileW, TileH;
     u32 TilesPerCol, TilesPerRow, TileCount;
     volatile u32 NextTileIndex;
-} thread_dispatch;
+};
 
-typedef struct ray_state
+struct ray_state
 {
     arena Arena;
     scene *Scene;
 
     thread_dispatch Dispatch;
-} ray_state;
+};
 
 #endif /* RAY_H */
