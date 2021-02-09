@@ -57,8 +57,7 @@ main(int argc, char** argv)
 
                     if (MD_NodeHasTag(node, MD_S8Lit("namefunc")))
                     {
-                        fprintf(out_file, "static const char *\n%.*s_ToString(%.*s Value)\n{\n",
-                                MD_StringExpand(node->string),
+                        fprintf(out_file, "static const char *\nToString(%.*s Value)\n{\n",
                                 MD_StringExpand(node->string));
                         fprintf(out_file, "    switch (Value)\n    {\n");
                         for (MD_EachNode(enumeration, node->first_child))
@@ -70,19 +69,6 @@ main(int argc, char** argv)
                         fprintf(out_file, "    }\n");
                         fprintf(out_file, "    return \"Unknown %.*s Value\";\n",
                                 MD_StringExpand(node->string));
-                        fprintf(out_file, "}\n\n");
-                    }
-
-                    if (MD_NodeHasTag(node, MD_S8Lit("nametable")))
-                    {
-                        fprintf(out_file, "const char *%.*s_Names[] =\n{\n",
-                                MD_StringExpand(node->string));
-                        for (MD_EachNode(enumeration, node->first_child))
-                        {
-                            fprintf(out_file, "    [%.*s] = \"%.*s\",\n",
-                                    MD_StringExpand(enumeration->string),
-                                    MD_StringExpand(enumeration->string));
-                        }
                         fprintf(out_file, "}\n\n");
                     }
                 }

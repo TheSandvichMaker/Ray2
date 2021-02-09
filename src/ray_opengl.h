@@ -32,6 +32,9 @@
 #define GL_VALIDATE_STATUS                0x8B83
 #define GL_INFO_LOG_LENGTH                0x8B84
 
+#define GL_RGBA32F                        0x8814
+#define GL_RGB32F                         0x8815
+
 typedef char GLchar;
 typedef ptrdiff_t GLsizeiptr;
 
@@ -60,7 +63,9 @@ typedef struct opengl_info
 typedef struct opengl_state
 {
     GLuint VBO;
+
     GLuint ShaderProgram;
+    GLuint HdrBlit;
 
     GLuint DefaultInternalTextureFormat;
     GLuint DisplayImageTextureHandle;

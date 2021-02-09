@@ -94,12 +94,12 @@ Win32ReleaseSemaphore(platform_semaphore_handle Handle, int Count, int *Previous
     if (PreviousCount) *PreviousCount = (int)PreviousCountLong;
 }
 
-typedef struct win32_thread_data
+struct win32_thread_data
 {
     platform_semaphore_handle Semaphore;
     platform_thread_proc Proc;
     void *UserData;
-} win32_thread_data;
+};
 
 internal DWORD WINAPI
 Win32ThreadProc(void *Param)
@@ -293,9 +293,9 @@ WGL_FUNCTIONS(WGL_DECLARE_FUNCTION)
 #define WGL_EXTENSIONS(_) \
     _(WGL_EXT_framebuffer_sRGB)
 
-typedef struct wgl_info {
+struct wgl_info {
     WGL_EXTENSIONS(GL_DECLARE_EXTENSION_STRUCT_MEMBER)
-} wgl_info;
+};
 
 internal void
 WGLSetPixelFormat(HDC WindowDC, wgl_info *WGLInfo)
@@ -502,6 +502,16 @@ Win32GetSecondsElapsed(LARGE_INTEGER Start, LARGE_INTEGER End)
     return Result;
 }
 
+internal void
+Win32ResizeBackbuffer(platform_backbuffer *Backbuffer, u32 ClientW, u32 ClientH)
+{
+    Backbuffer->W = ClientW;
+    Backbuffer->H = ClientH;
+    Backbuffer->Pixels = (f32 *)Win32Allocate(3.0f*sizeof(f32)*Backbuffer->W*Backbuffer->H,
+                                              0,
+                                              LOCATION_STRING("Win32 Backbuffer"));
+}
+
 internal CALLBACK LRESULT
 Win32WindowProc(HWND Window, UINT Message, WPARAM wParam, LPARAM lParam)
 {
@@ -562,7 +572,11 @@ main(int argc, char **argv)
         .WindowW = CW_USEDEFAULT,
         .WindowH = CW_USEDEFAULT,
     };
-    Links.AppInit(&Params);
+
+    if (Links.AppInit)
+    {
+        Links.AppInit(&Params);
+    }
 
     if ((Params.WindowW != CW_USEDEFAULT) &&
         (Params.WindowH != CW_USEDEFAULT))
@@ -623,13 +637,15 @@ main(int argc, char **argv)
     app_input Input = {};
 
     RECT PrevClientRect = {};
-    platform_backbuffer Backbuffer = {};
+
+    platform_backbuffer Backbuffer  = {};
+    platform_backbuffer Frontbuffer = {};
 
     LARGE_INTEGER StartClock = Win32GetClock();
 
     while (G_Running)
     {
-        bool QuitRequested = false;
+        bool ExitRequested = false;
 
         MSG Message;
         while (PeekMessageA(&Message, 0, 0, 0, PM_REMOVE))
@@ -639,7 +655,7 @@ main(int argc, char **argv)
                 case WM_CLOSE:
                 case WM_QUIT:
                 {
-                    QuitRequested = true;
+                    ExitRequested = true;
                 } break;
 
                 default:
@@ -663,17 +679,24 @@ main(int argc, char **argv)
                 Win32Deallocate(Backbuffer.Pixels);
             }
             
-            Backbuffer.W = ClientW;
-            Backbuffer.H = ClientH;
-            Backbuffer.Pixels = (u32 *)Win32Allocate(sizeof(*Backbuffer.Pixels)*Backbuffer.W*Backbuffer.H,
-                                                     0,
-                                                     LOCATION_STRING("Win32 Backbuffer"));
+            Win32ResizeBackbuffer(&Backbuffer, ClientW, ClientH);
+            Win32ResizeBackbuffer(&Frontbuffer, ClientW, ClientH);
             PrevClientRect = ClientRect;
         }
 
-        Links.AppTick(API, &Input, &Backbuffer);
+        if (Links.AppTick)
+        {
+            Links.AppTick(API, &Input, &Backbuffer);
+            ExitRequested |= Input.ExitRequested;
 
-        GLDisplayBitmap(Backbuffer.W, Backbuffer.H, Backbuffer.Pixels);
+            if (Input.SwapBuffers)
+            {
+                Input.SwapBuffers = false;
+                Swap(Backbuffer, Frontbuffer);
+            }
+
+            GLDisplayHdrBuffer(Backbuffer.W, Backbuffer.H, Backbuffer.Pixels);
+        }
 
         SwapBuffers(WindowDC);
 
@@ -687,10 +710,15 @@ main(int argc, char **argv)
                  1.0 / SecondsElapsed);
         SetWindowTextA(WindowHandle, TitleBuffer);
 
-        if (QuitRequested)
+        if (ExitRequested)
         {
             G_Running = false;
         }
+    }
+
+    if (Links.AppExit)
+    {
+        Links.AppExit();
     }
 
     if (Backbuffer.Pixels)

@@ -34,7 +34,7 @@ if "%1" equ "release" (
     set FLAGS=%SHARED_FLAGS% %DEBUG_FLAGS%
 )
 
-clang++ %SOURCE% %INCLUDE_DIRECTORIES% %FLAGS% -o ..\build\%OUTPUT% %LINK_LIBRARIES%
+clang++ %SOURCE% %INCLUDE_DIRECTORIES% %FLAGS% -std=c++20 -o ..\build\%OUTPUT% %LINK_LIBRARIES%
 set LAST_ERROR=%ERRORLEVEL%
 
 popd REM build
