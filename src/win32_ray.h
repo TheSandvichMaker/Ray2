@@ -9,7 +9,7 @@
 
 global platform_api Platform;
 
-#include "ray_math.h"
+#include "ray_handmade_math.h"
 #include "ray_arena.h"
 #include "ray_opengl.h"
 

@@ -2,8 +2,11 @@
 
 #include <stdio.h>
 
+extern "C"
+{
 __declspec(dllexport) unsigned long NvOptimusEnablement        = 1;
 __declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
+}
 
 global b32 G_Running = true;
 global win32_state G_Win32State;
@@ -269,6 +272,10 @@ typedef GL_DEBUG_CALLBACK(gl_debug_proc);
     _(void, glVertexAttribPointer, GLuint index, GLint size, GLenum type, GLboolean normalized,            \
                                    GLsizei stride, const void *pointer)                                    \
     _(GLint, glGetAttribLocation, GLuint program, const GLchar *name)                                      \
+    _(void, glGetActiveAttrib, GLuint program, GLuint index, GLsizei bufSize, GLsizei *length,             \
+                               GLint *size, GLenum *type, GLchar *name)                                    \
+    _(void, glGetActiveUniform, GLuint program, GLuint index, GLsizei bufSize, GLsizei *length,            \
+                                GLint *size, GLenum *type, GLchar *name)                                   \
     _(void, glGetProgramiv, GLuint program, GLenum pname, GLint *params)                                   \
     _(void, glGetProgramInfoLog, GLuint program, GLsizei bufSize, GLsizei *length, GLchar *infoLog)        \
     _(void, glDisableVertexAttribArray, GLuint index)                                                      \
@@ -293,7 +300,8 @@ WGL_FUNCTIONS(WGL_DECLARE_FUNCTION)
 #define WGL_EXTENSIONS(_) \
     _(WGL_EXT_framebuffer_sRGB)
 
-struct wgl_info {
+struct wgl_info
+{
     WGL_EXTENSIONS(GL_DECLARE_EXTENSION_STRUCT_MEMBER)
 };
 
@@ -503,13 +511,36 @@ Win32GetSecondsElapsed(LARGE_INTEGER Start, LARGE_INTEGER End)
 }
 
 internal void
-Win32ResizeBackbuffer(platform_backbuffer *Backbuffer, u32 ClientW, u32 ClientH)
+Win32ResizeImageBuffer(app_imagebuffer *ImageBuffer, u32 ClientW, u32 ClientH)
 {
-    Backbuffer->W = ClientW;
-    Backbuffer->H = ClientH;
-    Backbuffer->Pixels = (f32 *)Win32Allocate(3.0f*sizeof(f32)*Backbuffer->W*Backbuffer->H,
-                                              0,
-                                              LOCATION_STRING("Win32 Backbuffer"));
+    if (ImageBuffer->Backbuffer)
+    {
+        Win32Deallocate(ImageBuffer->Backbuffer);
+    }
+
+    if (ImageBuffer->Frontbuffer)
+    {
+        Win32Deallocate(ImageBuffer->Frontbuffer);
+    }
+            
+    ImageBuffer->W = ClientW;
+    ImageBuffer->H = ClientH;
+    if (ImageBuffer->W*ImageBuffer->H > 0)
+    {
+        ImageBuffer->Backbuffer = (app_pixel *)Win32Allocate(sizeof(app_pixel)*ImageBuffer->W*ImageBuffer->H,
+                                                             0,
+                                                             LOCATION_STRING("Win32 Backbuffer"));
+        ImageBuffer->Frontbuffer = (app_pixel *)Win32Allocate(sizeof(app_pixel)*ImageBuffer->W*ImageBuffer->H,
+                                                              0,
+                                                              LOCATION_STRING("Win32 Frontbuffer"));
+    }
+}
+
+internal void
+Win32HandleKey(app_button *Button, bool EndedDown)
+{
+    Button->EndedDown = EndedDown;
+    Button->HalfTransitionCount += 1;
 }
 
 internal CALLBACK LRESULT
@@ -542,21 +573,21 @@ main(int argc, char **argv)
     G_Win32State.AllocationSentinel.Next = &G_Win32State.AllocationSentinel;
     G_Win32State.AllocationSentinel.Prev = &G_Win32State.AllocationSentinel;
 
-	QueryPerformanceFrequency(&G_PerfFreq);
+    QueryPerformanceFrequency(&G_PerfFreq);
 
     SYSTEM_INFO SystemInfo;
     GetSystemInfo(&SystemInfo);
 
     platform_api API =
     {
-        .Reserve          = Win32Reserve,
-        .Commit           = Win32Commit,
-        .Allocate         = Win32Allocate,
-        .Deallocate       = Win32Deallocate,
-        .PageSize         = SystemInfo.dwPageSize,
-        .CreateThread     = Win32CreateThread,
-        .CreateSemaphore  = Win32CreateSemaphore,
-        .WaitOnSemaphore  = Win32WaitOnSemaphore,
+        .Reserve = Win32Reserve,
+        .Commit = Win32Commit,
+        .Allocate = Win32Allocate,
+        .Deallocate = Win32Deallocate,
+        .PageSize = SystemInfo.dwPageSize,
+        .CreateThread = Win32CreateThread,
+        .CreateSemaphore = Win32CreateSemaphore,
+        .WaitOnSemaphore = Win32WaitOnSemaphore,
         .ReleaseSemaphore = Win32ReleaseSemaphore,
         .LogicalCoreCount = 8,
     };
@@ -638,14 +669,21 @@ main(int argc, char **argv)
 
     RECT PrevClientRect = {};
 
-    platform_backbuffer Backbuffer  = {};
-    platform_backbuffer Frontbuffer = {};
+    app_imagebuffer ImageBuffer = {};
 
     LARGE_INTEGER StartClock = Win32GetClock();
+
+    POINT PrevCursorP;
+    GetCursorPos(&PrevCursorP);
 
     while (G_Running)
     {
         bool ExitRequested = false;
+
+        for (usize I = 0; I < ArrayCount(Input.Buttons); ++I)
+        {
+            Input.Buttons[I].HalfTransitionCount = 0;
+        }
 
         MSG Message;
         while (PeekMessageA(&Message, 0, 0, 0, PM_REMOVE))
@@ -657,6 +695,32 @@ main(int argc, char **argv)
                 {
                     ExitRequested = true;
                 } break;
+
+                case WM_KEYUP:
+                case WM_KEYDOWN:
+                case WM_SYSKEYUP:
+                case WM_SYSKEYDOWN: {
+                    u32 VkCode = (u32)Message.wParam;
+                    b32 AltDown = (Message.lParam & (1 << 29)) != 0;
+                    b32 WasDown = (Message.lParam & (1 << 30)) != 0;
+                    b32 IsDown = (Message.lParam & (1 << 31)) == 0;
+
+                    switch (VkCode)
+                    {
+                        case 'A': { Win32HandleKey(&Input.Buttons[AppButton_Left], IsDown); } break;
+                        case 'D': { Win32HandleKey(&Input.Buttons[AppButton_Right], IsDown); } break;
+                        case 'W': { Win32HandleKey(&Input.Buttons[AppButton_Forward], IsDown); } break;
+                        case 'S': { Win32HandleKey(&Input.Buttons[AppButton_Back], IsDown); } break;
+                        case VK_SPACE: { Win32HandleKey(&Input.Buttons[AppButton_Up], IsDown); } break;
+                        case VK_CONTROL: { Win32HandleKey(&Input.Buttons[AppButton_Down], IsDown); } break;
+                    }
+                } break;
+
+                case WM_LBUTTONDOWN: { Win32HandleKey(&Input.Buttons[AppButton_LeftMouse], true); } break;
+                case WM_LBUTTONUP:   { Win32HandleKey(&Input.Buttons[AppButton_LeftMouse], false); } break;
+
+                case WM_RBUTTONDOWN: { Win32HandleKey(&Input.Buttons[AppButton_RightMouse], true); } break;
+                case WM_RBUTTONUP:   { Win32HandleKey(&Input.Buttons[AppButton_RightMouse], false); } break;
 
                 default:
                 {
@@ -674,28 +738,24 @@ main(int argc, char **argv)
 
         if (!StructsAreEqual(&ClientRect, &PrevClientRect))
         {
-            if (Backbuffer.Pixels)
-            {
-                Win32Deallocate(Backbuffer.Pixels);
-            }
-            
-            Win32ResizeBackbuffer(&Backbuffer, ClientW, ClientH);
-            Win32ResizeBackbuffer(&Frontbuffer, ClientW, ClientH);
+            Win32ResizeImageBuffer(&ImageBuffer, ClientW, ClientH);
             PrevClientRect = ClientRect;
         }
 
+        POINT CursorP;
+        GetCursorPos(&CursorP);
+
+        Input.MouseDeltaX = CursorP.x - PrevCursorP.x;
+        Input.MouseDeltaY = CursorP.y - PrevCursorP.y;
+
+        PrevCursorP = CursorP;
+
         if (Links.AppTick)
         {
-            Links.AppTick(API, &Input, &Backbuffer);
+            Links.AppTick(API, &Input, &ImageBuffer);
             ExitRequested |= Input.ExitRequested;
 
-            if (Input.SwapBuffers)
-            {
-                Input.SwapBuffers = false;
-                Swap(Backbuffer, Frontbuffer);
-            }
-
-            GLDisplayHdrBuffer(Backbuffer.W, Backbuffer.H, Backbuffer.Pixels);
+            GLDisplayHdrBuffer(&ImageBuffer);
         }
 
         SwapBuffers(WindowDC);
@@ -721,10 +781,7 @@ main(int argc, char **argv)
         Links.AppExit();
     }
 
-    if (Backbuffer.Pixels)
-    {
-        Win32Deallocate(Backbuffer.Pixels);
-    }
+    Win32ResizeImageBuffer(&ImageBuffer, 0, 0);
 
     bool LeakedMemory = false;
     for (win32_allocation_header *Header = G_Win32State.AllocationSentinel.Next;

@@ -132,9 +132,6 @@ typedef intptr_t  ssize;
 
 #define Swap(A, B) do { auto SwapTemp_ = A; A = B; B = SwapTemp_; } while(0)
 
-// #define alignof(x) _Alignof(x)
-// #define offsetof(Type, M) (usize)((char*)&((Type*)0)->M - (char*)0)
-
 #define always_inline __attribute__((always_inline))
 
 //
@@ -153,11 +150,17 @@ typedef intptr_t  ssize;
 #define FILE_AND_LINE_STRING FILE_AND_LINE_STRING_(__FILE__, __LINE__)
 #define LOCATION_STRING(...) FILE_AND_LINE_STRING " (" __VA_ARGS__ ")"
 
-typedef struct platform_backbuffer
+typedef struct app_pixel
+{
+    f32 r, g, b, w;
+} app_pixel;
+
+typedef struct app_imagebuffer
 {
     u32 W, H;
-    f32 *Pixels; // vec3
-} platform_backbuffer;
+    app_pixel *Backbuffer;
+    app_pixel *Frontbuffer;
+} app_imagebuffer;
 
 typedef struct platform_semaphore_handle
 {
@@ -194,10 +197,47 @@ typedef struct platform_api
 // App API
 //
 
+typedef enum app_button_type
+{
+    AppButton_Left,
+    AppButton_Right,
+    AppButton_Forward,
+    AppButton_Back,
+    AppButton_Up,
+    AppButton_Down,
+    AppButton_LeftMouse,
+    AppButton_RightMouse,
+    AppButton_COUNT,
+} app_button_type;
+
+typedef struct app_button
+{
+    u32 HalfTransitionCount;
+    u32 EndedDown;
+} app_button;
+
+static inline bool
+ButtonPressed(app_button *Button)
+{
+    bool Result = (((Button->HalfTransitionCount == 1) && Button->EndedDown) ||
+                   (Button->HalfTransitionCount > 1));
+    return Result;
+}
+
+static inline bool
+ButtonReleased(app_button *Button)
+{
+    bool Result = (((Button->HalfTransitionCount == 1) && !Button->EndedDown) ||
+                   (Button->HalfTransitionCount > 1));
+    return Result;
+}
+
 typedef struct app_input
 {
     b32 ExitRequested; 
-    b32 SwapBuffers;
+    f32 MouseDeltaX;
+    f32 MouseDeltaY;
+    app_button Buttons[AppButton_COUNT];
 } app_input;
 
 typedef struct app_init_params
@@ -210,7 +250,7 @@ typedef struct app_init_params
 typedef struct app_links
 {
     void (*AppInit)(app_init_params *Params);
-    void (*AppTick)(platform_api PlatformAPI, app_input *Input, platform_backbuffer *Backbuffer);
+    void (*AppTick)(platform_api PlatformAPI, app_input *Input, app_imagebuffer *ImageBuffer);
     void (*AppExit)(void);
 } app_links;
 

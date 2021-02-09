@@ -32,6 +32,10 @@
 #define GL_VALIDATE_STATUS                0x8B83
 #define GL_INFO_LOG_LENGTH                0x8B84
 
+#define GL_ACTIVE_UNIFORMS                0x8B86
+#define GL_ACTIVE_UNIFORM_BLOCKS          0x8A36
+#define GL_ACTIVE_ATTRIBUTES              0x8B89
+
 #define GL_RGBA32F                        0x8814
 #define GL_RGB32F                         0x8815
 
@@ -46,7 +50,7 @@ typedef ptrdiff_t GLsizeiptr;
     _(GL_EXT_framebuffer_sRGB) \
     _(GL_ARB_framebuffer_sRGB)
 
-typedef struct opengl_info
+struct opengl_info
 {
     char *Vendor;
     char *Renderer;
@@ -58,25 +62,24 @@ typedef struct opengl_info
     int BabyVersion;
 
     MY_GL_EXTENSIONS(GL_DECLARE_EXTENSION_STRUCT_MEMBER)
-} opengl_info;
+};
 
-typedef struct opengl_state
+struct opengl_hdr_blit_program
+{
+    GLuint Program;
+    GLuint RcpHdrScale;
+};
+
+struct opengl_state
 {
     GLuint VBO;
 
     GLuint ShaderProgram;
-    GLuint HdrBlit;
+    opengl_hdr_blit_program HdrBlit;
 
     GLuint DefaultInternalTextureFormat;
     GLuint DisplayImageTextureHandle;
-} opengl_state;
-
-#if 0
-typedef struct opengl_program_interface
-{
-    void (*
 };
-#endif
 
 global opengl_state OpenGL;
 

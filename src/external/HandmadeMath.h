@@ -165,7 +165,9 @@ extern "C"
 #endif
 
 #define HMM_INLINE static inline
+#ifndef HMM_EXTERN
 #define HMM_EXTERN extern
+#endif
 
 #if !defined(HMM_SINF) || !defined(HMM_COSF) || !defined(HMM_TANF) || \
     !defined(HMM_SQRTF) || !defined(HMM_EXPF) || !defined(HMM_LOGF) || \

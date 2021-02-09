@@ -35,6 +35,19 @@ MemoryIsEqual(usize Count, void *AInit, void *BInit)
 
 #define StructsAreEqual(A, B) (Assert(sizeof(*(A)) == sizeof(*(B))), MemoryIsEqual(sizeof(*(A)), A, B))
 
+internal void
+CopySize(usize Size, void *SourceInit, void *DestInit)
+{
+    char *Source = (char *)SourceInit;
+    char *Dest = (char *)DestInit;
+    while (--Size)
+    {
+        *Dest++ = *Source++;
+    }
+}
+
+#define CopyArray(Count, Source, Dest) CopySize(sizeof(*(Source))*Count, Source, Dest)
+
 #define DEFAULT_ARENA_CAPACITY Gigabytes(8)
 
 typedef struct arena

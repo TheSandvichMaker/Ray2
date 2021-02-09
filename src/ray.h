@@ -58,6 +58,7 @@ struct scene
     sphere Spheres[256];
 
     camera Camera;
+    camera NewCamera;
 
     vec3 DirectionalLightD;
     vec3 DirectionalLightEmission;
@@ -66,7 +67,7 @@ struct scene
 struct common_thread_params
 {
     scene *Scene;
-    platform_backbuffer *Backbuffer;
+    app_imagebuffer *Buffer;
 };
 
 struct thread_dispatch

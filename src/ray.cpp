@@ -2,6 +2,9 @@
 
 #define EPSILON 0.001f
 
+global bool FpsLook = false;
+global u32 FrameIndex = 0;
+
 internal u32
 Xorshift(random_series *Series)
 {
@@ -23,6 +26,26 @@ internal always_inline float
 RandomUnilateral(random_series *Series)
 {
     return UnilateralFromU32(Xorshift(Series));
+}
+
+internal always_inline vec2
+RandomUnilateralVec2(random_series *Series)
+{
+    return Vec2(UnilateralFromU32(Xorshift(Series)),
+                UnilateralFromU32(Xorshift(Series)));
+}
+
+internal always_inline float
+RandomBilateral(random_series *Series)
+{
+    return -1.0f + 2.0f*UnilateralFromU32(Xorshift(Series));
+}
+
+internal always_inline vec2
+RandomBilateralVec2(random_series *Series)
+{
+    return Vec2(-1.0f + 2.0f*UnilateralFromU32(Xorshift(Series)),
+                -1.0f + 2.0f*UnilateralFromU32(Xorshift(Series)));
 }
 
 internal always_inline bool
@@ -130,11 +153,13 @@ Occluded(scene *Scene, vec3 RayP, vec3 RayD, f32 max_t)
 }
 
 internal void
-CastRays(scene *Scene, int MinX, int MinY, int OnePastMaxX, int OnePastMaxY, platform_backbuffer *Backbuffer)
+CastRays(scene *Scene, int MinX, int MinY, int OnePastMaxX, int OnePastMaxY, app_imagebuffer *ImageBuffer)
 {
-    f32 RcpW = 1.0f / (f32)Backbuffer->W;
-    f32 RcpH = 1.0f / (f32)Backbuffer->H;
-    vec3 *Pixels = (vec3 *)Backbuffer->Pixels;
+    u32 W = ImageBuffer->W;
+    u32 H = ImageBuffer->H;
+    f32 RcpW = 1.0f / (f32)W;
+    f32 RcpH = 1.0f / (f32)H;
+    vec4 *Pixels = (vec4 *)ImageBuffer->Backbuffer;
 
     vec3 CamP = Scene->Camera.P;
     vec3 CamX = Scene->Camera.X;
@@ -142,11 +167,13 @@ CastRays(scene *Scene, int MinX, int MinY, int OnePastMaxX, int OnePastMaxY, pla
     vec3 CamZ = Scene->Camera.Z;
 
     f32 FilmDistance = 1.0f;
-    vec2 FilmDim = Vec2(1.0f, (f32)Backbuffer->H / (f32)Backbuffer->W);
+    vec2 FilmDim = Vec2(1.0f, (f32)H / (f32)W);
     vec3 FilmP = CamP - CamZ*FilmDistance;
 
     vec3 DirectionalLightD = Scene->DirectionalLightD;
     vec3 DirectionalLightEmission = Scene->DirectionalLightEmission;
+
+    random_series Entropy = { FrameIndex };
 
     for (ssize Y = MinY; Y < OnePastMaxY; ++Y)
     {
@@ -155,8 +182,12 @@ CastRays(scene *Scene, int MinX, int MinY, int OnePastMaxX, int OnePastMaxY, pla
         {
             f32 U = -1.0f + 2.0f*RcpW*(f32)X;
 
+            vec2 AAJitter = RandomBilateralVec2(&Entropy);
+            vec2 FilmUV = Vec2(RcpW*AAJitter.X + FilmDim.X*U,
+                               RcpH*AAJitter.Y + FilmDim.Y*V);
+
             vec3 RayP = CamP;
-            vec3 RayD = Normalize((FilmP + FilmDim.X*CamX*U + FilmDim.Y*CamY*V) - CamP);
+            vec3 RayD = Normalize(FilmP + FilmUV.X*CamX + FilmUV.Y*CamY - CamP);
 
             f32 t = F32_MAX;
             vec3 Color = Vec3(0, 0, 1);
@@ -187,17 +218,17 @@ CastRays(scene *Scene, int MinX, int MinY, int OnePastMaxX, int OnePastMaxY, pla
                 }
             }
 
-            Pixels[Y*Backbuffer->W + X] = Color;
+            Pixels[Y*W + X].RGB += Color;
+            Pixels[Y*W + X].A   += 1;
         }
     }
 }
 
 internal void
-Aim(camera *Camera, vec3 P, vec3 Z)
+Aim(camera *Camera, vec3 Z)
 {
     vec3 WorldUp = Vec3(0, 1, 0);
 
-    Camera->P = P;
     Camera->Z = Normalize(Z);
     Camera->Z.Y = Clamp(-0.95f, Camera->Z.Y, 0.95f);
     Camera->X = Normalize(Cross(WorldUp, Camera->Z));
@@ -207,7 +238,8 @@ Aim(camera *Camera, vec3 P, vec3 Z)
 internal void
 AimAt(camera *Camera, vec3 P, vec3 TargetP)
 {
-    Aim(Camera, P, P - TargetP);
+    Aim(Camera, P - TargetP);
+    Camera->P = P;
 }
 
 internal void
@@ -217,7 +249,7 @@ BuildTestScene(scene *Scene)
     ++Scene->PlaneCount;    // NOTE: NULL plane
     ++Scene->SphereCount;   // NOTE: NULL sphere
 
-    AimAt(&Scene->Camera, Vec3(0, 2, -10), Vec3(0, 1, 0));
+    AimAt(&Scene->NewCamera, Vec3(0, 2, -5), Vec3(0, 1, 0));
 
     Scene->DirectionalLightD = Normalize(Vec3(0, 1, -0.5f));
     Scene->DirectionalLightEmission = 2.0f*Vec3(1, 1, 1);
@@ -259,15 +291,15 @@ RayThreadProc(void *UserData, platform_semaphore_handle ParentSemaphore)
         if (TileIndex < Dispatch->TileCount)
         {
             scene *Scene = CommonParams->Scene;
-            platform_backbuffer *Backbuffer = CommonParams->Backbuffer;
+            app_imagebuffer *Buffer = CommonParams->Buffer;
 
             u32 TileIndexX = TileIndex % Dispatch->TilesPerRow;
             u32 TileIndexY = TileIndex / Dispatch->TilesPerRow;
             u32 TileMinX = TileIndexX*Dispatch->TileW;
             u32 TileMinY = TileIndexY*Dispatch->TileH;
-            u32 TileOnePastMaxX = MIN(TileMinX + Dispatch->TileW, Backbuffer->W);
-            u32 TileOnePastMaxY = MIN(TileMinY + Dispatch->TileH, Backbuffer->H);
-            CastRays(Scene, TileMinX, TileMinY, TileOnePastMaxX, TileOnePastMaxY, Backbuffer);
+            u32 TileOnePastMaxX = MIN(TileMinX + Dispatch->TileW, Buffer->W);
+            u32 TileOnePastMaxY = MIN(TileMinY + Dispatch->TileH, Buffer->H);
+            CastRays(Scene, TileMinX, TileMinY, TileOnePastMaxX, TileOnePastMaxY, Buffer);
 
             AtomicAddU32(&Dispatch->RetiredTileCount, 1);
         } 
@@ -301,9 +333,11 @@ ManageDispatch(thread_dispatch *Dispatch, u32 TileW, u32 TileH, common_thread_pa
         Result = true;
 
         Dispatch->Common = Common;
+        scene *Scene = Dispatch->Common.Scene;
+        app_imagebuffer *Buffer = Dispatch->Common.Buffer;
 
-        u32 W = Dispatch->Common.Backbuffer->W;
-        u32 H = Dispatch->Common.Backbuffer->W;
+        u32 W = Buffer->W;
+        u32 H = Buffer->W;
         u32 TilesPerRow = (W + (TileW - 1)) / TileW;
         u32 TilesPerCol = (H + (TileH - 1)) / TileH;
         u32 TileCount = TilesPerRow*TilesPerCol;
@@ -315,6 +349,18 @@ ManageDispatch(thread_dispatch *Dispatch, u32 TileW, u32 TileH, common_thread_pa
         Dispatch->TileCount = TileCount;
         Dispatch->NextTileIndex = 0;
         Dispatch->RetiredTileCount = 0;
+
+        CopyArray(Buffer->W*Buffer->H, Buffer->Backbuffer, Buffer->Frontbuffer);
+        Swap(Buffer->Backbuffer, Buffer->Frontbuffer);
+
+        if (!StructsAreEqual(&Scene->Camera, &Scene->NewCamera))
+        {
+            ZeroArray(Buffer->W*Buffer->H, Buffer->Backbuffer);
+            Scene->Camera = Scene->NewCamera;
+            FrameIndex = 0;
+        }
+
+        FrameIndex += 1;
 
         MEMORY_BARRIER;
 
@@ -336,9 +382,11 @@ RayInit(app_init_params *Params)
 global ray_state *RayState = 0;
 
 internal void
-RayTick(platform_api API, app_input *Input, platform_backbuffer *Backbuffer)
+RayTick(platform_api API, app_input *Input, app_imagebuffer *ImageBuffer)
 {
     Platform = API;
+
+    f32 dt = 1.0f / 240.0f;
 
     if (!RayState)
     {
@@ -349,18 +397,71 @@ RayTick(platform_api API, app_input *Input, platform_backbuffer *Backbuffer)
         BuildTestScene(Scene);
     }
 
-    GlobalTimer += 1.0f / 240.0f;
-
     scene *Scene = RayState->Scene;
-    AimAt(&Scene->Camera, Vec3(0, 2 + SinF(GlobalTimer), -5), Vec3(0, 1, 0));
+    camera *Camera = &Scene->NewCamera;
+
+    if (ButtonPressed(&Input->Buttons[AppButton_RightMouse]))
+    {
+        FpsLook = !FpsLook;
+    }
+
+    if (FpsLook)
+    {
+        if ((Input->MouseDeltaX != 0) ||
+            (Input->MouseDeltaY != 0))
+        {
+            vec3 CameraZ = Camera->Z;
+            CameraZ -= dt*Camera->X*(f32)Input->MouseDeltaX;
+            CameraZ += dt*Camera->Y*(f32)Input->MouseDeltaY;
+
+            Aim(Camera, CameraZ);
+        }
+
+        vec3 CameraP = Camera->P;
+
+        f32 HorzMoveSpeed = 10.0f;
+        f32 VertMoveSpeed = 10.0f;
+
+        if (Input->Buttons[AppButton_Left].EndedDown)
+        {
+            CameraP -= dt*HorzMoveSpeed*Camera->X;
+        }
+
+        if (Input->Buttons[AppButton_Right].EndedDown)
+        {
+            CameraP += dt*HorzMoveSpeed*Camera->X;
+        }
+
+        if (Input->Buttons[AppButton_Forward].EndedDown)
+        {
+            CameraP -= dt*HorzMoveSpeed*Camera->Z;
+        }
+
+        if (Input->Buttons[AppButton_Back].EndedDown)
+        {
+            CameraP += dt*HorzMoveSpeed*Camera->Z;
+        }
+
+        if (Input->Buttons[AppButton_Up].EndedDown)
+        {
+            CameraP += dt*VertMoveSpeed*Camera->Y;
+        }
+
+        if (Input->Buttons[AppButton_Down].EndedDown)
+        {
+            CameraP -= dt*VertMoveSpeed*Camera->Y;
+        }
+
+        Camera->P = CameraP;
+    }
 
     thread_dispatch *Dispatch = &RayState->Dispatch;
-    bool Swap = ManageDispatch(Dispatch, 16, 16, common_thread_params {
+    bool FinishedPass = ManageDispatch(Dispatch, 16, 16, common_thread_params {
         .Scene = Scene,
-        .Backbuffer = Backbuffer,
+        .Buffer = ImageBuffer,
     });
 
-    Input->SwapBuffers = Swap;
+    GlobalTimer += dt;
 }
 
 internal void

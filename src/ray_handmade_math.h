@@ -3,6 +3,7 @@
 
 #define HMM_PREFIX(X) X
 #define HANDMADE_MATH_IMPLEMENTATION
+#define HMM_EXTERN static
 #include "external/HandmadeMath.h"
 
 typedef hmm_vec2 vec2;
