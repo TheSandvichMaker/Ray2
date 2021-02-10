@@ -64,17 +64,23 @@ struct opengl_info
     MY_GL_EXTENSIONS(GL_DECLARE_EXTENSION_STRUCT_MEMBER)
 };
 
-struct opengl_hdr_blit_program
+struct opengl_program_common
 {
     GLuint Program;
-    GLuint RcpHdrScale;
+    GLuint FrameIndex;
+};
+
+struct opengl_hdr_blit_program : opengl_program_common
+{
 };
 
 struct opengl_state
 {
+    int FrameIndex;
+
     GLuint VBO;
 
-    GLuint ShaderProgram;
+    opengl_program_common ShaderProgram;
     opengl_hdr_blit_program HdrBlit;
 
     GLuint DefaultInternalTextureFormat;

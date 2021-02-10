@@ -36,6 +36,7 @@ struct sphere
 struct material
 {
     vec3 Albedo;
+    b32 Mirror;
 };
 
 struct camera

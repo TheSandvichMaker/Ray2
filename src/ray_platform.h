@@ -132,7 +132,11 @@ typedef intptr_t  ssize;
 
 #define Swap(A, B) do { auto SwapTemp_ = A; A = B; B = SwapTemp_; } while(0)
 
+#if DEBUG_BUILD
+#define always_inline
+#else
 #define always_inline __attribute__((always_inline))
+#endif
 
 //
 // Assert
@@ -235,6 +239,7 @@ ButtonReleased(app_button *Button)
 typedef struct app_input
 {
     b32 ExitRequested; 
+    b32 CaptureCursor;
     f32 MouseDeltaX;
     f32 MouseDeltaY;
     app_button Buttons[AppButton_COUNT];

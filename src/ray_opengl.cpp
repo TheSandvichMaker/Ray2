@@ -99,8 +99,8 @@ GLUnloadTexture(GLuint Handle)
 #define V_ATTRIB_COLOR    1
 #define V_ATTRIB_TEXCOORD 2
 
-internal GLuint
-GLCompileProgram(const char *VertexShaderSource, const char *FragmentShaderSource)
+internal void
+GLCompileProgram(opengl_program_common *Result, const char *VertexShaderSource, const char *FragmentShaderSource)
 {
     GLint Success;
     char InfoLog[1024];
@@ -160,11 +160,12 @@ GLCompileProgram(const char *VertexShaderSource, const char *FragmentShaderSourc
     glDeleteShader(VertexShader);
     glDeleteShader(FragmentShader);
 
-    return ShaderProgram;
+    Result->Program = ShaderProgram;
+    Result->FrameIndex = glGetUniformLocation(ShaderProgram, "FrameIndex");
 }
 
-internal GLuint
-GLCompileBasicProgram(void)
+internal void
+GLCompileBasicProgram(opengl_program_common *Result)
 {
     const char *VertexShaderSource = 
     R"GLSL(
@@ -198,7 +199,7 @@ GLCompileBasicProgram(void)
         }
     )GLSL";
 
-    return GLCompileProgram(VertexShaderSource, FragmentShaderSource);
+    GLCompileProgram(Result, VertexShaderSource, FragmentShaderSource);
 }
 
 internal void
@@ -229,19 +230,40 @@ GLCompileHdrBlitProgram(opengl_hdr_blit_program *Result)
         out vec4 FragColor;
 
         uniform sampler2D Texture;
-        uniform float RcpHdrScale;
+        uniform int FrameIndex;
+
+        // SOURCE: https://www.shadertoy.com/view/XlXcW4
+        const uint k = 1103515245U;  // GLIB C
+        //const uint k = 134775813U;   // Delphi and Turbo Pascal
+        //const uint k = 20170906U;    // Today's date (use three days ago's dateif you want a prime)
+        //const uint k = 1664525U;     // Numerical Recipes
+
+        vec3 Hash(uvec3 x)
+        {
+            x = ((x>>8U)^x.yzx)*k;
+            x = ((x>>8U)^x.yzx)*k;
+            x = ((x>>8U)^x.yzx)*k;
+            
+            return vec3(x)*(1.0/float(0xffffffffU));
+        }
 
         void main()
         {
             FragColor = VertexColor*texture(Texture, TexCoord);
             FragColor.rgb /= FragColor.a;
             FragColor.rgb = vec3(1.0f) - exp(-FragColor.rgb);
+
+            vec3 PrevDitherNoise = Hash(uvec3(gl_FragCoord.xy, FrameIndex - 1));
+            vec3 DitherNoise = Hash(uvec3(gl_FragCoord.xy, FrameIndex));
+
+            FragColor.rgb = sqrt(FragColor.rgb);
+            vec3 Dither = 1.0f / 255.0f*(DitherNoise - PrevDitherNoise);
+            FragColor.rgb += Dither;
+            FragColor.rgb *= FragColor.rgb;
         }
     )GLSL";
 
-    GLuint Program = GLCompileProgram(VertexShaderSource, FragmentShaderSource);
-    Result->Program = Program;
-    Result->RcpHdrScale = glGetUniformLocation(Program, "RcpHdrScale");
+    GLCompileProgram(Result, VertexShaderSource, FragmentShaderSource);
 }
 
 struct textured_vertex
@@ -273,7 +295,7 @@ GLEndFullscreenPass(void)
 }
 
 internal void
-GLUseProgram(GLuint Program)
+GLUseProgramCommon(opengl_program_common *Program)
 {
     glVertexAttribPointer(V_ATTRIB_P, 3, GL_FLOAT, GL_FALSE,
                           sizeof(textured_vertex), (void *)offsetof(textured_vertex, P));
@@ -287,13 +309,14 @@ GLUseProgram(GLuint Program)
                           sizeof(textured_vertex), (void *)offsetof(textured_vertex, UV));
     glEnableVertexAttribArray(2);
 
-    glUseProgram(Program);
+    glUseProgram(Program->Program);
+    glUniform1i(Program->FrameIndex, OpenGL.FrameIndex);
 }
 
 internal void
 GLUseProgram(opengl_hdr_blit_program *Program)
 {
-    GLUseProgram(Program->Program);
+    GLUseProgramCommon(Program);
 }
 
 internal void
@@ -317,13 +340,15 @@ GLDisplayBitmap(int W, int H, void *Pixels)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
     GLBeginFullscreenPass();
-    GLUseProgram(OpenGL.ShaderProgram);
+    GLUseProgramCommon(&OpenGL.ShaderProgram);
     GLEndFullscreenPass();
 }
 
 internal void
 GLDisplayHdrBuffer(app_imagebuffer *Buffer)
 {
+    OpenGL.FrameIndex += 1;
+
     glClearColor(1, 0, 1, 1);
     glClear(GL_COLOR_BUFFER_BIT);
 
@@ -381,7 +406,7 @@ GLInit(void)
 
     glGenTextures(1, &OpenGL.DisplayImageTextureHandle);
 
-    OpenGL.ShaderProgram = GLCompileBasicProgram();
+    GLCompileBasicProgram(&OpenGL.ShaderProgram);
     GLCompileHdrBlitProgram(&OpenGL.HdrBlit);
 
     if (glDebugMessageCallbackARB)

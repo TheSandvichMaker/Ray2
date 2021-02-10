@@ -543,6 +543,24 @@ Win32HandleKey(app_button *Button, bool EndedDown)
     Button->HalfTransitionCount += 1;
 }
 
+internal void *
+Win32GetTemporaryMemory(usize Size)
+{
+    local_persist usize BufferSize = 0;
+    local_persist void *Buffer;
+
+    Size = AlignPow2(Size, Platform.PageSize);
+
+    if (BufferSize < Size)
+    {
+        BufferSize = Size;
+        Win32Deallocate(Buffer);
+        Buffer = Win32Allocate(Size, MemFlag_NoLeakCheck, LOCATION_STRING("Temporary Platform Memory"));
+    }
+
+    return Buffer;
+}
+
 internal CALLBACK LRESULT
 Win32WindowProc(HWND Window, UINT Message, WPARAM wParam, LPARAM lParam)
 {
@@ -618,6 +636,7 @@ main(int argc, char **argv)
         Win32RectSpecs(WindowRect, 0, 0, &Params.WindowW, &Params.WindowH);
     }
     
+    HCURSOR ArrowCursor = LoadCursorA(NULL, IDC_ARROW);
     WNDCLASSA WindowClass =
     {
         .style         = CS_OWNDC|CS_HREDRAW|CS_VREDRAW,
@@ -676,6 +695,28 @@ main(int argc, char **argv)
     POINT PrevCursorP;
     GetCursorPos(&PrevCursorP);
 
+    b32 UsingRawInput = false;
+    RAWINPUTDEVICE RawDevices[2] = {};
+    
+    // Mouse
+    RawDevices[0].usUsagePage = 0x1;
+    RawDevices[0].usUsage = 0x2;
+    RawDevices[0].hwndTarget = WindowHandle;
+    
+    // Keyboard
+    RawDevices[1].usUsagePage = 0x1;
+    RawDevices[1].usUsage = 0x6;
+    RawDevices[1].hwndTarget = WindowHandle;
+    
+    if (RegisterRawInputDevices(RawDevices, ArrayCount(RawDevices), sizeof(RAWINPUTDEVICE)))
+    {
+        UsingRawInput = true;
+    }
+    else
+    {
+        fprintf(stderr, "Failed to register raw input devices. Falling back to legacy message input.\n");
+    }
+
     while (G_Running)
     {
         bool ExitRequested = false;
@@ -684,6 +725,9 @@ main(int argc, char **argv)
         {
             Input.Buttons[I].HalfTransitionCount = 0;
         }
+
+        Input.MouseDeltaX = 0;
+        Input.MouseDeltaY = 0;
 
         MSG Message;
         while (PeekMessageA(&Message, 0, 0, 0, PM_REMOVE))
@@ -696,31 +740,111 @@ main(int argc, char **argv)
                     ExitRequested = true;
                 } break;
 
+                case WM_INPUT:
+                {
+                    HRAWINPUT Handle = (HRAWINPUT)Message.lParam;
+                    UINT Size;
+                    GetRawInputData(Handle, RID_INPUT, 0, &Size, sizeof(RAWINPUTHEADER));
+                    
+                    BYTE *Data = (BYTE *)Win32GetTemporaryMemory(Size);
+                    if (GetRawInputData(Handle, RID_INPUT, Data, &Size, sizeof(RAWINPUTHEADER)) != Size)
+                    {
+                        fprintf(stderr, "GetRawInputData returned an unexpected size.\n");
+                    }
+                    
+                    RAWINPUT* Raw = (RAWINPUT*)Data;
+                    if (Raw->header.dwType == RIM_TYPEMOUSE)
+                    {
+                        if (Raw->data.mouse.usButtonFlags)
+                        {
+                            if (Raw->data.mouse.usButtonFlags & RI_MOUSE_LEFT_BUTTON_DOWN)
+                            {
+                                Win32HandleKey(&Input.Buttons[AppButton_LeftMouse], true);
+                            }
+
+                            if (Raw->data.mouse.usButtonFlags & RI_MOUSE_LEFT_BUTTON_UP)
+                            {
+                                Win32HandleKey(&Input.Buttons[AppButton_LeftMouse], false);
+                            }
+
+                            if (Raw->data.mouse.usButtonFlags & RI_MOUSE_RIGHT_BUTTON_DOWN)
+                            {
+                                Win32HandleKey(&Input.Buttons[AppButton_RightMouse], true);
+                            }
+
+                            if (Raw->data.mouse.usButtonFlags & RI_MOUSE_RIGHT_BUTTON_UP)
+                            {
+                                Win32HandleKey(&Input.Buttons[AppButton_RightMouse], false);
+                            }
+                        }
+
+                        if (Raw->data.mouse.usFlags & MOUSE_MOVE_ABSOLUTE)
+                        {
+                            fprintf(stderr, "Only siths deal in absolutes!\n");
+                        }
+                        else
+                        {
+                            Input.MouseDeltaX = Raw->data.mouse.lLastX;
+                            Input.MouseDeltaY = Raw->data.mouse.lLastY;
+                        }
+                    }
+                    else if (Raw->header.dwType == RIM_TYPEKEYBOARD)
+                    {
+                        bool IsDown = !(Raw->data.keyboard.Flags & RI_KEY_BREAK);
+                        switch (Raw->data.keyboard.VKey)
+                        {
+                            case 'A': { Win32HandleKey(&Input.Buttons[AppButton_Left], IsDown); } break;
+                            case 'D': { Win32HandleKey(&Input.Buttons[AppButton_Right], IsDown); } break;
+                            case 'W': { Win32HandleKey(&Input.Buttons[AppButton_Forward], IsDown); } break;
+                            case 'S': { Win32HandleKey(&Input.Buttons[AppButton_Back], IsDown); } break;
+                            case VK_SPACE: { Win32HandleKey(&Input.Buttons[AppButton_Up], IsDown); } break;
+                            case VK_CONTROL: { Win32HandleKey(&Input.Buttons[AppButton_Down], IsDown); } break;
+                        }
+                    }
+                } break;
+
                 case WM_KEYUP:
                 case WM_KEYDOWN:
                 case WM_SYSKEYUP:
                 case WM_SYSKEYDOWN: {
-                    u32 VkCode = (u32)Message.wParam;
-                    b32 AltDown = (Message.lParam & (1 << 29)) != 0;
-                    b32 WasDown = (Message.lParam & (1 << 30)) != 0;
-                    b32 IsDown = (Message.lParam & (1 << 31)) == 0;
-
-                    switch (VkCode)
+                    if (!UsingRawInput)
                     {
-                        case 'A': { Win32HandleKey(&Input.Buttons[AppButton_Left], IsDown); } break;
-                        case 'D': { Win32HandleKey(&Input.Buttons[AppButton_Right], IsDown); } break;
-                        case 'W': { Win32HandleKey(&Input.Buttons[AppButton_Forward], IsDown); } break;
-                        case 'S': { Win32HandleKey(&Input.Buttons[AppButton_Back], IsDown); } break;
-                        case VK_SPACE: { Win32HandleKey(&Input.Buttons[AppButton_Up], IsDown); } break;
-                        case VK_CONTROL: { Win32HandleKey(&Input.Buttons[AppButton_Down], IsDown); } break;
+                        u32 VkCode = (u32)Message.wParam;
+                        b32 AltDown = (Message.lParam & (1 << 29)) != 0;
+                        b32 WasDown = (Message.lParam & (1 << 30)) != 0;
+                        b32 IsDown = (Message.lParam & (1 << 31)) == 0;
+
+                        switch (VkCode)
+                        {
+                            case 'A': { Win32HandleKey(&Input.Buttons[AppButton_Left], IsDown); } break;
+                            case 'D': { Win32HandleKey(&Input.Buttons[AppButton_Right], IsDown); } break;
+                            case 'W': { Win32HandleKey(&Input.Buttons[AppButton_Forward], IsDown); } break;
+                            case 'S': { Win32HandleKey(&Input.Buttons[AppButton_Back], IsDown); } break;
+                            case VK_SPACE: { Win32HandleKey(&Input.Buttons[AppButton_Up], IsDown); } break;
+                            case VK_CONTROL: { Win32HandleKey(&Input.Buttons[AppButton_Down], IsDown); } break;
+                        }
                     }
                 } break;
 
-                case WM_LBUTTONDOWN: { Win32HandleKey(&Input.Buttons[AppButton_LeftMouse], true); } break;
-                case WM_LBUTTONUP:   { Win32HandleKey(&Input.Buttons[AppButton_LeftMouse], false); } break;
+                case WM_LBUTTONDOWN:
+                {
+                    if (!UsingRawInput) Win32HandleKey(&Input.Buttons[AppButton_LeftMouse], true);
+                } break;
 
-                case WM_RBUTTONDOWN: { Win32HandleKey(&Input.Buttons[AppButton_RightMouse], true); } break;
-                case WM_RBUTTONUP:   { Win32HandleKey(&Input.Buttons[AppButton_RightMouse], false); } break;
+                case WM_LBUTTONUP:
+                {
+                    if (!UsingRawInput) Win32HandleKey(&Input.Buttons[AppButton_LeftMouse], false);
+                } break;
+
+                case WM_RBUTTONDOWN:
+                {
+                    if (!UsingRawInput) Win32HandleKey(&Input.Buttons[AppButton_RightMouse], true);
+                } break;
+
+                case WM_RBUTTONUP:
+                {
+                    if (!UsingRawInput) Win32HandleKey(&Input.Buttons[AppButton_RightMouse], false);
+                } break;
 
                 default:
                 {
@@ -745,8 +869,11 @@ main(int argc, char **argv)
         POINT CursorP;
         GetCursorPos(&CursorP);
 
-        Input.MouseDeltaX = CursorP.x - PrevCursorP.x;
-        Input.MouseDeltaY = CursorP.y - PrevCursorP.y;
+        if (!UsingRawInput)
+        {
+            Input.MouseDeltaX = CursorP.x - PrevCursorP.x;
+            Input.MouseDeltaY = CursorP.y - PrevCursorP.y;
+        }
 
         PrevCursorP = CursorP;
 
@@ -756,6 +883,28 @@ main(int argc, char **argv)
             ExitRequested |= Input.ExitRequested;
 
             GLDisplayHdrBuffer(&ImageBuffer);
+        }
+
+        if (Input.CaptureCursor)
+        {
+            POINT TopLeft = { 0, 0 };
+            ClientToScreen(WindowHandle, &TopLeft);
+
+            RECT ScreenspaceClientRect;
+            ScreenspaceClientRect.left = TopLeft.x;
+            ScreenspaceClientRect.top = TopLeft.y;
+            ScreenspaceClientRect.right = TopLeft.x + ClientW;
+            ScreenspaceClientRect.bottom = TopLeft.y + ClientH;
+
+            ClipCursor(&ScreenspaceClientRect);
+            SetCursor(NULL);
+            SetCursorPos(ScreenspaceClientRect.left + ClientW / 2,
+                         ScreenspaceClientRect.top + ClientH / 2);
+        }
+        else
+        {
+            ClipCursor(NULL);
+            SetCursor(ArrowCursor);
         }
 
         SwapBuffers(WindowDC);

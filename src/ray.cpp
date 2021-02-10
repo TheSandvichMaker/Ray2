@@ -1,9 +1,17 @@
 #include "ray.h"
+#include <stdio.h>
 
 #define EPSILON 0.001f
 
 global bool FpsLook = false;
 global u32 FrameIndex = 0;
+
+internal vec4 *
+GetBackbuffer(app_imagebuffer *ImageBuffer)
+{
+    Assert(sizeof(*ImageBuffer->Backbuffer) == sizeof(vec4));
+    return (vec4 *)ImageBuffer->Backbuffer;
+}
 
 internal u32
 Xorshift(random_series *Series)
@@ -46,6 +54,61 @@ RandomBilateralVec2(random_series *Series)
 {
     return Vec2(-1.0f + 2.0f*UnilateralFromU32(Xorshift(Series)),
                 -1.0f + 2.0f*UnilateralFromU32(Xorshift(Series)));
+}
+
+internal u32
+HashCoordinate(u32 X, u32 Y, u32 Z)
+{
+    u32 Result = ((X*73856093)^(Y*83492791)^(Z*871603259));
+    return Result;
+}
+
+internal always_inline void
+GetTangents(vec3 N, vec3* B1, vec3* B2)
+{
+    // SOURCE: https://graphics.pixar.com/library/OrthonormalB/paper.pdf
+    f32 Sign = CopySignF(1.0f, N.Z);
+    f32 A = -1.0f / (Sign + N.Z);
+    f32 B = N.X*N.Y*A;
+    *B1 = Vec3(1.0f + Sign*N.X*N.X*A, Sign*B, -Sign*N.X);
+    *B2 = Vec3(B, Sign + N.Y*N.Y*A, -N.Y);
+}
+
+internal always_inline vec3
+OrientedAroundNormal(vec3 V, vec3 N) {
+	vec3 T, B;
+	GetTangents(N, &T, &B);
+
+    vec3 Result = (V.X*B + V.Y*N + V.Z*T);
+    return Result;
+}
+
+internal always_inline vec3
+MapToHemisphere(vec3 N, vec2 Sample) {
+	f32 Azimuth = 2.0f*HMM_PI32*Sample.X;
+	f32 Y       = Sample.Y;
+
+    vec3 Hemi;
+    Hemi.X = CosF(Azimuth)*SquareRootF(1.0f - Y*Y);
+    Hemi.Y = Y;
+    Hemi.Z = SinF(Azimuth)*SquareRootF(1.0f - Y*Y);
+
+    vec3 Result = OrientedAroundNormal(Hemi, N);
+    return Result;
+}
+
+internal always_inline vec3
+MapToCosineWeightedHemisphere(vec3 N, vec2 Sample) {
+	f32 Azimuth = 2.0f*HMM_PI32*Sample.X;
+	f32 Y       = Sample.Y;
+
+    vec3 Hemi;
+    Hemi.X = CosF(Azimuth)*SquareRootF(1.0f - Y);
+    Hemi.Y = SquareRootF(Y);
+    Hemi.Z = SinF(Azimuth)*SquareRootF(1.0f - Y);
+
+    vec3 Result = OrientedAroundNormal(Hemi, N);
+    return Result;
 }
 
 internal always_inline bool
@@ -159,7 +222,7 @@ CastRays(scene *Scene, int MinX, int MinY, int OnePastMaxX, int OnePastMaxY, app
     u32 H = ImageBuffer->H;
     f32 RcpW = 1.0f / (f32)W;
     f32 RcpH = 1.0f / (f32)H;
-    vec4 *Pixels = (vec4 *)ImageBuffer->Backbuffer;
+    vec4 *Pixels = GetBackbuffer(ImageBuffer);
 
     vec3 CamP = Scene->Camera.P;
     vec3 CamX = Scene->Camera.X;
@@ -173,7 +236,7 @@ CastRays(scene *Scene, int MinX, int MinY, int OnePastMaxX, int OnePastMaxY, app
     vec3 DirectionalLightD = Scene->DirectionalLightD;
     vec3 DirectionalLightEmission = Scene->DirectionalLightEmission;
 
-    random_series Entropy = { FrameIndex };
+    random_series Entropy = { HashCoordinate((u32)MinX, (u32)MinY, FrameIndex) };
 
     for (ssize Y = MinY; Y < OnePastMaxY; ++Y)
     {
@@ -189,36 +252,55 @@ CastRays(scene *Scene, int MinX, int MinY, int OnePastMaxX, int OnePastMaxY, app
             vec3 RayP = CamP;
             vec3 RayD = Normalize(FilmP + FilmUV.X*CamX + FilmUV.Y*CamY - CamP);
 
-            f32 t = F32_MAX;
-            vec3 Color = Vec3(0, 0, 1);
+            vec3 TotalColor = Vec3(0, 0, 0);
+            vec3 Throughput = Vec3(1, 1, 1);
 
-            u32 HitMaterial;
-            vec3 HitNormal;
-            if (TraceScene(Scene, RayP, RayD, &t, &HitMaterial, &HitNormal))
+            usize MaxBounceIndex = 8;
+            for (usize BounceIndex = 0; BounceIndex < MaxBounceIndex; ++BounceIndex)
             {
-                vec3 HitP = RayP + t*RayD;
-
-                if (Occluded(Scene, HitP + EPSILON*DirectionalLightD, DirectionalLightD, F32_MAX))
+                f32 t = F32_MAX;
+                u32 HitMaterial;
+                vec3 N;
+                if (TraceScene(Scene, RayP, RayD, &t, &HitMaterial, &N))
                 {
-                    Color = Vec3(0, 0, 0);
+                    vec3 HitP = RayP + t*RayD;
+
+                    material *Material = &Scene->Materials[HitMaterial];
+                    if (Material->Mirror)
+                    {
+                        vec3 R = Reflect(RayD, N);
+                        RayP = HitP + EPSILON*R;
+                        RayD = R;
+                        Throughput *= Material->Albedo;
+                    }
+                    else
+                    {
+                        vec3 BRDF = (1.0f / HMM_PI32)*Material->Albedo;
+                        Throughput *= BRDF;
+
+                        f32 NdotL = Dot(N, DirectionalLightD);
+                        if ((NdotL > 0.0f) &&
+                            !Occluded(Scene, HitP + EPSILON*DirectionalLightD, DirectionalLightD, F32_MAX))
+                        {
+                            TotalColor += Throughput*NdotL*DirectionalLightEmission;
+                        }
+
+                        vec3 R = MapToCosineWeightedHemisphere(N, RandomUnilateralVec2(&Entropy));
+
+                        RayP = HitP + EPSILON*R;
+                        RayD = R;
+
+                        Throughput *= HMM_PI32;
+                    }
                 }
                 else
                 {
-                    vec3 HitAlbedo = Scene->Materials[HitMaterial].Albedo;
-                    f32 NdotL = MaxF(0.0f, Dot(DirectionalLightD, HitNormal));
-                    vec3 Light = DirectionalLightEmission*NdotL;
-                    vec3 ReflectedD = Reflect(RayD, HitNormal);
-                    f32 Phong = MaxF(0.0f, Dot(ReflectedD, DirectionalLightD));
-                    Phong *= Phong;
-                    Phong *= Phong;
-                    Phong *= Phong;
-                    Phong *= Phong;
-                    Phong *= Phong;
-                    Color = HitAlbedo*Light + Phong*Light;
+                    TotalColor += Vec3(0.1f, 0.2f, 0.5f)*Throughput;
+                    break;
                 }
             }
 
-            Pixels[Y*W + X].RGB += Color;
+            Pixels[Y*W + X].RGB += TotalColor;
             Pixels[Y*W + X].A   += 1;
         }
     }
@@ -230,7 +312,7 @@ Aim(camera *Camera, vec3 Z)
     vec3 WorldUp = Vec3(0, 1, 0);
 
     Camera->Z = Normalize(Z);
-    Camera->Z.Y = Clamp(-0.95f, Camera->Z.Y, 0.95f);
+    Camera->Z.Y = Clamp(-0.9f, Camera->Z.Y, 0.9f);
     Camera->X = Normalize(Cross(WorldUp, Camera->Z));
     Camera->Y = Normalize(Cross(Camera->Z, Camera->X));
 }
@@ -260,7 +342,12 @@ BuildTestScene(scene *Scene)
 
     u32 SphereMaterialIndex = Scene->MaterialCount++;
     material *SphereMaterial = &Scene->Materials[SphereMaterialIndex];
-    SphereMaterial->Albedo = Vec3(1, 0.1f, 0.1f);
+    SphereMaterial->Albedo = Vec3(1, 1, 1);
+
+    u32 Sphere2MaterialIndex = Scene->MaterialCount++;
+    material *Sphere2Material = &Scene->Materials[Sphere2MaterialIndex];
+    Sphere2Material->Albedo = Vec3(1, 0.5f, 0.2f);
+    Sphere2Material->Mirror = true;
 
     Scene->Planes[Scene->PlaneCount++] =
     {
@@ -272,8 +359,15 @@ BuildTestScene(scene *Scene)
     Scene->Spheres[Scene->SphereCount++] =
     {
         .Material = SphereMaterialIndex,
-        .P = Vec3(0, 2, 0),
-        .r = 1.0f,
+        .P = Vec3(0, 3.0f, 0),
+        .r = 2.0f,
+    };
+
+    Scene->Spheres[Scene->SphereCount++] =
+    {
+        .Material = Sphere2MaterialIndex,
+        .P = Vec3(5, 3.0f, 0),
+        .r = 2.0f,
     };
 }
 
@@ -357,7 +451,6 @@ ManageDispatch(thread_dispatch *Dispatch, u32 TileW, u32 TileH, common_thread_pa
         {
             ZeroArray(Buffer->W*Buffer->H, Buffer->Backbuffer);
             Scene->Camera = Scene->NewCamera;
-            FrameIndex = 0;
         }
 
         FrameIndex += 1;
@@ -375,8 +468,8 @@ ManageDispatch(thread_dispatch *Dispatch, u32 TileW, u32 TileH, common_thread_pa
 internal void
 RayInit(app_init_params *Params)
 {
-    Params->WindowW = 512;
-    Params->WindowH = 512;
+    Params->WindowW = 1280;
+    Params->WindowH = 720;
 }
 
 global ray_state *RayState = 0;
@@ -404,6 +497,8 @@ RayTick(platform_api API, app_input *Input, app_imagebuffer *ImageBuffer)
     {
         FpsLook = !FpsLook;
     }
+
+    Input->CaptureCursor = FpsLook;
 
     if (FpsLook)
     {

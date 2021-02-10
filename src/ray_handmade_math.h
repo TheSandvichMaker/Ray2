@@ -30,4 +30,15 @@ Reflect(vec3 D, vec3 N)
     return D - 2.0f*Dot(N, D)*N;
 }
 
+static inline float
+CopySignF(float ValueOf, float SignOf)
+{
+    int SignMask = 1 << 31;
+    int SignAsBits = *(int *)&SignOf;
+    int ValueAsBits = *(int *)&ValueOf;
+    ValueAsBits = (SignAsBits & SignMask)|(ValueAsBits & ~SignMask);
+    float Result = *(float *)&ValueOf;
+    return Result;
+}
+
 #endif /* RAY_HANDMADE_MATH_H */
