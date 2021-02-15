@@ -231,11 +231,26 @@ GLCompileBloomDownsampleProgram(opengl_bloom_downsample_program *Result)
 
         void main()
         {
-            vec4 S00 = texture(SourceTexture, TexCoord + 0.5f*vec2(-SourcePixSize.x, -SourcePixSize.y));
-            vec4 S10 = texture(SourceTexture, TexCoord + 0.5f*vec2( SourcePixSize.x, -SourcePixSize.y));
-            vec4 S01 = texture(SourceTexture, TexCoord + 0.5f*vec2(-SourcePixSize.x,  SourcePixSize.y));
-            vec4 S11 = texture(SourceTexture, TexCoord + 0.5f*vec2( SourcePixSize.x,  SourcePixSize.y));
-            FragColor = 0.25f*(S00 + S10 + S01 + S11);
+
+            const vec2 Offsets[9] = vec2[](vec2(-1.0f,  1.0f),
+                                           vec2( 0.0f,  1.0f),
+                                           vec2( 1.0f,  1.0f),
+                                           vec2(-1.0f,  0.0f),
+                                           vec2( 0.0f,  0.0f),
+                                           vec2( 1.0f,  0.0f),
+                                           vec2(-1.0f, -1.0f),
+                                           vec2( 0.0f, -1.0f),
+                                           vec2( 1.0f, -1.0f));
+
+            const float Weights[9] = float[](0.0625f, 0.125f, 0.0625f,
+                                             0.125f , 0.25f , 0.125f ,
+                                             0.0625f, 0.125f, 0.0625f);
+
+            FragColor = vec4(0);
+            for (int I = 0; I < 9; ++I)
+            {
+                FragColor += Weights[I]*texture(SourceTexture, TexCoord + SourcePixSize*Offsets[I]);
+            }
         }
     )GLSL";
 
@@ -475,8 +490,8 @@ GLDisplayHdrBuffer(app_imagebuffer *Buffer)
                  Buffer->Frontbuffer);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
 
     if (OpenGL.BloomFramebufferCount == 0)
     {
