@@ -1,5 +1,5 @@
 #include "ray.h"
-#include <stdio.h>
+#include "ray_assets.cpp"
 
 #define EPSILON 0.001f
 
@@ -117,11 +117,15 @@ RayIntersectPlane(vec3 RayP, vec3 RayD, vec3 PlaneNormal, f32 PlaneDistance, f32
     bool Result = false;
 
     f32 Denom = Dot(PlaneNormal, RayD);
-    f32 t = (PlaneDistance - Dot(PlaneNormal, RayP)) / Denom;
-    if ((t >= EPSILON) && (t < *tOut))
+
+    if (Denom < 0.0f)
     {
-        Result = true;
-        *tOut = t;
+        f32 t = (PlaneDistance - Dot(PlaneNormal, RayP)) / Denom;
+        if ((t >= EPSILON) && (t < *tOut))
+        {
+            Result = true;
+            *tOut = t;
+        }
     }
 
     return Result;
@@ -151,8 +155,6 @@ RayIntersectSphere(vec3 RayP, vec3 RayD, vec3 SphereO, f32 SphereR, f32 *tOut)
 
     return Result;
 }
-
-global f32 GlobalTimer;
 
 template <bool ShadowRay>
 internal always_inline bool
@@ -264,9 +266,16 @@ CastRays(scene *Scene, int MinX, int MinY, int OnePastMaxX, int OnePastMaxY, app
                 if (TraceScene(Scene, RayP, RayD, &t, &HitMaterial, &N))
                 {
                     vec3 HitP = RayP + t*RayD;
+                    f32 NdotD = -Dot(N, RayD);
+
+                    if (NdotD < 0.0f)
+                    {
+                        N = -N;
+                        NdotD = -NdotD;
+                    }
 
                     material *Material = &Scene->Materials[HitMaterial];
-                    if (Material->Mirror)
+                    if (Material->Flags & Material_Mirror)
                     {
                         vec3 R = Reflect(RayD, N);
                         RayP = HitP + EPSILON*R;
@@ -291,11 +300,35 @@ CastRays(scene *Scene, int MinX, int MinY, int OnePastMaxX, int OnePastMaxY, app
                         RayD = R;
 
                         Throughput *= HMM_PI32;
+
+                        f32 RouletteTest = RandomUnilateral(&Entropy);
+                        f32 RouletteChance = Clamp(0.1f, Max3(Throughput), 0.9f);
+                        if (RouletteTest > RouletteChance)
+                        {
+                            break;
+                        }
+                        Throughput *= 1.0f / RouletteChance;
                     }
                 }
                 else
                 {
-                    TotalColor += Vec3(0.1f, 0.2f, 0.5f)*Throughput;
+                    vec3 SkyLight = Vec3(0.5f, 0.8f, 1.0f);
+                    if (Scene->IBL)
+                    {
+                        image *IBL = Scene->IBL;
+
+                        f32 Phi = ATan2F(RayD.Z, RayD.X);
+                        f32 Theta = ASinF(RayD.Y);
+                        f32 U = 0.5f + (0.5f / HMM_PI32)*Phi;
+                        f32 V = 0.5f + (1.0f / HMM_PI32)*Theta;
+
+                        s32 SkyX = (s32)(U*(f32)IBL->W) % IBL->W;
+                        s32 SkyY = (s32)(V*(f32)IBL->H) % IBL->H;
+
+                        SkyLight = IBL->Pixels[SkyY*IBL->W + SkyX];
+                    }
+
+                    TotalColor += Throughput*SkyLight;
                     break;
                 }
             }
@@ -324,8 +357,21 @@ AimAt(camera *Camera, vec3 P, vec3 TargetP)
     Camera->P = P;
 }
 
+internal u32
+AddMaterial(scene *Scene, material MaterialPrototype)
+{
+    u32 Index = Scene->MaterialCount++;
+    material *Material = &Scene->Materials[Index];
+    *Material = MaterialPrototype;
+    if (Max3(Material->Emissive) > 0.0f)
+    {
+        Material->Flags |= Material_Emissive;
+    }
+    return Index;
+}
+
 internal void
-BuildTestScene(scene *Scene)
+BuildTestScene(scene *Scene, arena *TempArena)
 {
     ++Scene->MaterialCount; // NOTE: NULL material
     ++Scene->PlaneCount;    // NOTE: NULL plane
@@ -333,21 +379,14 @@ BuildTestScene(scene *Scene)
 
     AimAt(&Scene->NewCamera, Vec3(0, 2, -5), Vec3(0, 1, 0));
 
-    Scene->DirectionalLightD = Normalize(Vec3(0, 1, -0.5f));
-    Scene->DirectionalLightEmission = 2.0f*Vec3(1, 1, 1);
+    // Scene->DirectionalLightD = Normalize(Vec3(0, 1, -0.5f));
+    // Scene->DirectionalLightEmission = 2.0f*Vec3(1, 1, 1);
+    Scene->IBL = LoadHdr(&Scene->Arena, TempArena, "ballroom_4k.hdr");
 
-    u32 PlaneMaterialIndex = Scene->MaterialCount++;
-    material *PlaneMaterial = &Scene->Materials[PlaneMaterialIndex];
-    PlaneMaterial->Albedo = Vec3(0.1f, 1, 0.1f);
-
-    u32 SphereMaterialIndex = Scene->MaterialCount++;
-    material *SphereMaterial = &Scene->Materials[SphereMaterialIndex];
-    SphereMaterial->Albedo = Vec3(1, 1, 1);
-
-    u32 Sphere2MaterialIndex = Scene->MaterialCount++;
-    material *Sphere2Material = &Scene->Materials[Sphere2MaterialIndex];
-    Sphere2Material->Albedo = Vec3(1, 0.5f, 0.2f);
-    Sphere2Material->Mirror = true;
+    u32 PlaneMaterialIndex = AddMaterial(Scene, { .Albedo = Vec3(0.1f, 1, 0.1f) });
+    u32 Plane2MaterialIndex = AddMaterial(Scene, { .Albedo = Vec3(0.8f, 0.3f, 0.5f) });
+    u32 SphereMaterialIndex = AddMaterial(Scene, { .Albedo = Vec3(1, 1, 1) });
+    u32 Sphere2MaterialIndex = AddMaterial(Scene, { .Flags = Material_Mirror, .Albedo = Vec3(1, 0.5f, 0.2f) });
 
     Scene->Planes[Scene->PlaneCount++] =
     {
@@ -356,11 +395,20 @@ BuildTestScene(scene *Scene)
         .d = 0.0f,
     };
 
+#if 0
+    Scene->Planes[Scene->PlaneCount++] =
+    {
+        .Material = Plane2MaterialIndex,
+        .N = Vec3(0, 0, -1),
+        .d = -10.0f,
+    };
+#endif
+
     Scene->Spheres[Scene->SphereCount++] =
     {
         .Material = SphereMaterialIndex,
-        .P = Vec3(0, 3.0f, 0),
-        .r = 2.0f,
+        .P = Vec3(5, 5.0f, 5.5f),
+        .r = 4.0f,
     };
 
     Scene->Spheres[Scene->SphereCount++] =
@@ -416,7 +464,7 @@ InitThreadDispatcher(thread_dispatch *Dispatch)
     {
         Platform.CreateThread(RayThreadProc, Dispatch);
     }
-};
+}
 
 internal bool
 ManageDispatch(thread_dispatch *Dispatch, u32 TileW, u32 TileH, common_thread_params Common)
@@ -487,7 +535,7 @@ RayTick(platform_api API, app_input *Input, app_imagebuffer *ImageBuffer)
         scene *Scene = RayState->Scene = PushStruct(&RayState->Arena, scene);
 
         InitThreadDispatcher(&RayState->Dispatch);
-        BuildTestScene(Scene);
+        BuildTestScene(Scene, &RayState->Arena);
     }
 
     scene *Scene = RayState->Scene;
@@ -555,8 +603,6 @@ RayTick(platform_api API, app_input *Input, app_imagebuffer *ImageBuffer)
         .Scene = Scene,
         .Buffer = ImageBuffer,
     });
-
-    GlobalTimer += dt;
 }
 
 internal void

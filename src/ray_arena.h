@@ -227,6 +227,18 @@ EndTemporaryMemory(temporary_memory Temp)
     }
 }
 
+internal inline void
+CommitTemporaryMemory(temporary_memory *Temp)
+{
+    arena *Arena = Temp->Arena;
+    if (Arena)
+    {
+        Assert(Arena->TempCount > 0);
+        --Arena->TempCount;
+        Temp->Arena = NULL;
+    }
+}
+
 #define ScopedMemory(TempArena)                                       \
     for (temporary_memory TempMem_ = BeginTemporaryMemory(TempArena); \
          TempMem_.Arena;                                              \

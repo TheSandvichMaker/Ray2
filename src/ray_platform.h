@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <emmintrin.h>
+#include <xmmintrin.h>
+#include <smmintrin.h>
 
 #ifdef __cplusplus
 extern "C"
@@ -13,6 +15,8 @@ extern "C"
 //
 // Types
 //
+
+struct arena;
 
 typedef int8_t   b8;
 typedef int16_t  b16;
@@ -33,6 +37,12 @@ typedef int64_t  s64;
 
 typedef uintptr_t usize;
 typedef intptr_t  ssize;
+
+struct string_u8
+{
+    usize Count;
+    u8 *Data;
+};
 
 //
 // Constants
@@ -189,6 +199,8 @@ typedef struct platform_api
     void *(*Commit)(usize Size, void *Pointer);
     void *(*Allocate)(usize Size, u32 Flags, const char *Tag);
     void (*Deallocate)(void *Pointer);
+    string_u8 (*ReadEntireFile)(arena *Arena, const char *FileName);
+    bool (*WriteEntireFile)(const char *FileName, string_u8 Data);
     platform_thread_handle (*CreateThread)(platform_thread_proc Proc, void *UserData);
     platform_semaphore_handle (*CreateSemaphore)(int InitialCount, int MaxCount);
     void (*WaitOnSemaphore)(platform_semaphore_handle Handle);

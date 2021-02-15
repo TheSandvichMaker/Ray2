@@ -1,4 +1,5 @@
 #include "win32_ray.h"
+#include "external/robustwin32io.cpp"
 
 #include <stdio.h>
 
@@ -68,10 +69,66 @@ Win32Deallocate(void *Pointer)
     }
 }
 
+internal string_u8
+Win32ReadEntireFile(arena *Arena, const char *FileName)
+{
+    string_u8 Result = {};
+
+	LARGE_INTEGER FileSize;
+    HANDLE FileHandle = CreateFileA(FileName, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
+    if (FileHandle != INVALID_HANDLE_VALUE)
+    {
+		if (GetFileSizeEx(FileHandle, &FileSize))
+        {
+            temporary_memory ResultTemp = BeginTemporaryMemory(Arena);
+            Result.Data = PushArrayNoClear(Arena, FileSize.QuadPart + 1, u8);
+
+            LONGLONG GotSize;
+			if (win32_sync_read(FileHandle, 0, FileSize.QuadPart, Result.Data, &GotSize))
+            {
+                Result.Count = (usize)GotSize;
+                Result.Data[GotSize] = 0;
+                CommitTemporaryMemory(&ResultTemp);
+            }
+            else
+            {
+                ZeroStruct(&Result);
+            }
+        }
+
+        CloseHandle(FileHandle);
+    }
+
+    return Result;
+}
+
+internal bool 
+Win32WriteEntireFile(const char *FileName, string_u8 Data)
+{
+    bool Result = false;
+
+    HANDLE FileHandle = CreateFileA(FileName, GENERIC_WRITE, 0, 0, OPEN_ALWAYS, 0, 0);
+    if (FileHandle != INVALID_HANDLE_VALUE)
+    {
+        LONGLONG GotSize;
+        if (win32_sync_write(FileHandle, 0, Data.Count, Data.Data, &GotSize))
+        {
+            if ((usize)GotSize == Data.Count)
+            {
+				Result = true;
+            }
+        }
+
+        CloseHandle(FileHandle);
+    }
+
+    return Result;
+}
+
 internal platform_semaphore_handle
 Win32CreateSemaphore(int InitialCount, int MaxCount)
 {
-    HANDLE Win32Handle = CreateSemaphoreA(NULL, InitialCount, MaxCount, NULL);
+    HANDLE Win32Handle = CreateSemaphoreA(nullptr, InitialCount, MaxCount, nullptr);
 
     platform_semaphore_handle Result =
     {
@@ -134,7 +191,7 @@ Win32CreateThread(platform_thread_proc Proc, void *UserData)
         .Semaphore = ThreadStartSemaphore,
     };
 
-    HANDLE Win32Handle = CreateThread(NULL, 0, Win32ThreadProc, &Win32ThreadData, 0, NULL);
+    HANDLE Win32Handle = CreateThread(nullptr, 0, Win32ThreadProc, &Win32ThreadData, 0, nullptr);
     platform_thread_handle Result =
     {
         .Opaque = (void *)Win32Handle,
@@ -182,107 +239,6 @@ Win32CreateThread(platform_thread_proc Proc, void *UserData)
 
 #define GL_DEBUG_CALLBACK(Name) void WINAPI Name(GLenum Source, GLenum Type, GLuint Id, GLenum Severity, GLsizei Length, const GLchar *Message, const void *UserParam)
 typedef GL_DEBUG_CALLBACK(gl_debug_proc);
-
-#define GL_FUNCTIONS(_)                                                                                    \
-    _(GLubyte *, glGetStringi, GLenum name, GLuint index)                                                  \
-    _(void, glDebugMessageCallbackARB, gl_debug_proc *Callback, const void *UserParam)                     \
-    _(void, glGenBuffers, GLsizei n, GLuint *buffers)                                                      \
-    _(void, glBindBuffer, GLenum target, GLuint buffer)                                                    \
-    _(void, glBufferData, GLenum target, GLsizeiptr size, const void *data, GLenum usage)                  \
-    _(void, glAttachShader, GLuint program, GLuint shader)                                                 \
-    _(void, glBindAttribLocation, GLuint program, GLuint index, const GLchar *name)                        \
-    _(void, glCompileShader, GLuint shader)                                                                \
-    _(GLuint, glCreateProgram, void)                                                                       \
-    _(GLuint, glCreateShader, GLenum type)                                                                 \
-    _(void, glDeleteProgram, GLuint program)                                                               \
-    _(void, glDeleteShader, GLuint shader)                                                                 \
-    _(void, glDetachShader, GLuint program, GLuint shader)                                                 \
-    _(void, glDrawBuffers, GLsizei n, const GLenum *bufs)                                                  \
-    _(void, glGetShaderiv, GLuint shader, GLenum pname, GLint *params)                                     \
-    _(void, glGetShaderInfoLog, GLuint shader, GLsizei bufSize, GLsizei *length, GLchar *infoLog)          \
-    _(void, glGetShaderSource, GLuint shader, GLsizei bufSize, GLsizei *length, GLchar *source)            \
-    _(GLint, glGetUniformLocation, GLuint program, const GLchar *name)                                     \
-    _(void, glGetUniformfv, GLuint program, GLint location, GLfloat *params)                               \
-    _(void, glGetUniformiv, GLuint program, GLint location, GLint *params)                                 \
-    _(void, glGetVertexAttribdv, GLuint index, GLenum pname, GLdouble *params)                             \
-    _(void, glGetVertexAttribfv, GLuint index, GLenum pname, GLfloat *params)                              \
-    _(void, glGetVertexAttribiv, GLuint index, GLenum pname, GLint *params)                                \
-    _(void, glGetVertexAttribPointerv, GLuint index, GLenum pname, void **pointer)                         \
-    _(GLboolean, glIsProgram, GLuint program)                                                              \
-    _(GLboolean, glIsShader, GLuint shader)                                                                \
-    _(void, glLinkProgram, GLuint program)                                                                 \
-    _(void, glShaderSource, GLuint shader, GLsizei count, const GLchar *const*string, const GLint *length) \
-    _(void, glUseProgram, GLuint program)                                                                  \
-    _(void, glUniform1f, GLint location, GLfloat v0)                                                       \
-    _(void, glUniform2f, GLint location, GLfloat v0, GLfloat v1)                                           \
-    _(void, glUniform3f, GLint location, GLfloat v0, GLfloat v1, GLfloat v2)                               \
-    _(void, glUniform4f, GLint location, GLfloat v0, GLfloat v1, GLfloat v2, GLfloat v3)                   \
-    _(void, glUniform1i, GLint location, GLint v0)                                                         \
-    _(void, glUniform2i, GLint location, GLint v0, GLint v1)                                               \
-    _(void, glUniform3i, GLint location, GLint v0, GLint v1, GLint v2)                                     \
-    _(void, glUniform4i, GLint location, GLint v0, GLint v1, GLint v2, GLint v3)                           \
-    _(void, glUniform1fv, GLint location, GLsizei count, const GLfloat *value)                             \
-    _(void, glUniform2fv, GLint location, GLsizei count, const GLfloat *value)                             \
-    _(void, glUniform3fv, GLint location, GLsizei count, const GLfloat *value)                             \
-    _(void, glUniform4fv, GLint location, GLsizei count, const GLfloat *value)                             \
-    _(void, glUniform1iv, GLint location, GLsizei count, const GLint *value)                               \
-    _(void, glUniform2iv, GLint location, GLsizei count, const GLint *value)                               \
-    _(void, glUniform3iv, GLint location, GLsizei count, const GLint *value)                               \
-    _(void, glUniform4iv, GLint location, GLsizei count, const GLint *value)                               \
-    _(void, glUniformMatrix2fv, GLint location, GLsizei count, GLboolean transpose, const GLfloat *value)  \
-    _(void, glUniformMatrix3fv, GLint location, GLsizei count, GLboolean transpose, const GLfloat *value)  \
-    _(void, glUniformMatrix4fv, GLint location, GLsizei count, GLboolean transpose, const GLfloat *value)  \
-    _(void, glValidateProgram, GLuint program)                                                             \
-    _(void, glVertexAttrib1d, GLuint index, GLdouble x)                                                    \
-    _(void, glVertexAttrib1dv, GLuint index, const GLdouble *v)                                            \
-    _(void, glVertexAttrib1f, GLuint index, GLfloat x)                                                     \
-    _(void, glVertexAttrib1fv, GLuint index, const GLfloat *v)                                             \
-    _(void, glVertexAttrib1s, GLuint index, GLshort x)                                                     \
-    _(void, glVertexAttrib1sv, GLuint index, const GLshort *v)                                             \
-    _(void, glVertexAttrib2d, GLuint index, GLdouble x, GLdouble y)                                        \
-    _(void, glVertexAttrib2dv, GLuint index, const GLdouble *v)                                            \
-    _(void, glVertexAttrib2f, GLuint index, GLfloat x, GLfloat y)                                          \
-    _(void, glVertexAttrib2fv, GLuint index, const GLfloat *v)                                             \
-    _(void, glVertexAttrib2s, GLuint index, GLshort x, GLshort y)                                          \
-    _(void, glVertexAttrib2sv, GLuint index, const GLshort *v)                                             \
-    _(void, glVertexAttrib3d, GLuint index, GLdouble x, GLdouble y, GLdouble z)                            \
-    _(void, glVertexAttrib3dv, GLuint index, const GLdouble *v)                                            \
-    _(void, glVertexAttrib3f, GLuint index, GLfloat x, GLfloat y, GLfloat z)                               \
-    _(void, glVertexAttrib3fv, GLuint index, const GLfloat *v)                                             \
-    _(void, glVertexAttrib3s, GLuint index, GLshort x, GLshort y, GLshort z)                               \
-    _(void, glVertexAttrib3sv, GLuint index, const GLshort *v)                                             \
-    _(void, glVertexAttrib4Nbv, GLuint index, const GLbyte *v)                                             \
-    _(void, glVertexAttrib4Niv, GLuint index, const GLint *v)                                              \
-    _(void, glVertexAttrib4Nsv, GLuint index, const GLshort *v)                                            \
-    _(void, glVertexAttrib4Nub, GLuint index, GLubyte x, GLubyte y, GLubyte z, GLubyte w)                  \
-    _(void, glVertexAttrib4Nubv, GLuint index, const GLubyte *v)                                           \
-    _(void, glVertexAttrib4Nuiv, GLuint index, const GLuint *v)                                            \
-    _(void, glVertexAttrib4Nusv, GLuint index, const GLushort *v)                                          \
-    _(void, glVertexAttrib4bv, GLuint index, const GLbyte *v)                                              \
-    _(void, glVertexAttrib4d, GLuint index, GLdouble x, GLdouble y, GLdouble z, GLdouble w)                \
-    _(void, glVertexAttrib4dv, GLuint index, const GLdouble *v)                                            \
-    _(void, glVertexAttrib4f, GLuint index, GLfloat x, GLfloat y, GLfloat z, GLfloat w)                    \
-    _(void, glVertexAttrib4fv, GLuint index, const GLfloat *v)                                             \
-    _(void, glVertexAttrib4iv, GLuint index, const GLint *v)                                               \
-    _(void, glVertexAttrib4s, GLuint index, GLshort x, GLshort y, GLshort z, GLshort w)                    \
-    _(void, glVertexAttrib4sv, GLuint index, const GLshort *v)                                             \
-    _(void, glVertexAttrib4ubv, GLuint index, const GLubyte *v)                                            \
-    _(void, glVertexAttrib4uiv, GLuint index, const GLuint *v)                                             \
-    _(void, glVertexAttrib4usv, GLuint index, const GLushort *v)                                           \
-    _(void, glVertexAttribPointer, GLuint index, GLint size, GLenum type, GLboolean normalized,            \
-                                   GLsizei stride, const void *pointer)                                    \
-    _(GLint, glGetAttribLocation, GLuint program, const GLchar *name)                                      \
-    _(void, glGetActiveAttrib, GLuint program, GLuint index, GLsizei bufSize, GLsizei *length,             \
-                               GLint *size, GLenum *type, GLchar *name)                                    \
-    _(void, glGetActiveUniform, GLuint program, GLuint index, GLsizei bufSize, GLsizei *length,            \
-                                GLint *size, GLenum *type, GLchar *name)                                   \
-    _(void, glGetProgramiv, GLuint program, GLenum pname, GLint *params)                                   \
-    _(void, glGetProgramInfoLog, GLuint program, GLsizei bufSize, GLsizei *length, GLchar *infoLog)        \
-    _(void, glDisableVertexAttribArray, GLuint index)                                                      \
-    _(void, glEnableVertexAttribArray, GLuint index)                                                       \
-    _(void, glBindVertexArray, GLuint array)                                                               \
-    _(void, glDeleteVertexArrays, GLsizei n, const GLuint *arrays)                                         \
-    _(void, glGenVertexArrays, GLsizei n, GLuint *arrays)
 
 GL_FUNCTIONS(WGL_DECLARE_FUNCTION)
 
@@ -533,6 +489,7 @@ Win32ResizeImageBuffer(app_imagebuffer *ImageBuffer, u32 ClientW, u32 ClientH)
         ImageBuffer->Frontbuffer = (app_pixel *)Win32Allocate(sizeof(app_pixel)*ImageBuffer->W*ImageBuffer->H,
                                                               0,
                                                               LOCATION_STRING("Win32 Frontbuffer"));
+        fprintf(stderr, "Resized Image Buffer, W: %u, H: %u\n", ClientW, ClientH);
     }
 }
 
@@ -602,6 +559,8 @@ main(int argc, char **argv)
         .Commit = Win32Commit,
         .Allocate = Win32Allocate,
         .Deallocate = Win32Deallocate,
+        .WriteEntireFile = Win32WriteEntireFile,
+        .ReadEntireFile = Win32ReadEntireFile,
         .PageSize = SystemInfo.dwPageSize,
         .CreateThread = Win32CreateThread,
         .CreateSemaphore = Win32CreateSemaphore,
@@ -636,7 +595,7 @@ main(int argc, char **argv)
         Win32RectSpecs(WindowRect, 0, 0, &Params.WindowW, &Params.WindowH);
     }
     
-    HCURSOR ArrowCursor = LoadCursorA(NULL, IDC_ARROW);
+    HCURSOR ArrowCursor = LoadCursorA(nullptr, IDC_ARROW);
     WNDCLASSA WindowClass =
     {
         .style         = CS_OWNDC|CS_HREDRAW|CS_VREDRAW,
@@ -897,13 +856,13 @@ main(int argc, char **argv)
             ScreenspaceClientRect.bottom = TopLeft.y + ClientH;
 
             ClipCursor(&ScreenspaceClientRect);
-            SetCursor(NULL);
+            SetCursor(nullptr);
             SetCursorPos(ScreenspaceClientRect.left + ClientW / 2,
                          ScreenspaceClientRect.top + ClientH / 2);
         }
         else
         {
-            ClipCursor(NULL);
+            ClipCursor(nullptr);
             SetCursor(ArrowCursor);
         }
 

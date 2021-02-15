@@ -5,8 +5,11 @@
 
 global platform_api Platform;
 
+#include <stdio.h>
+
 #include "ray_arena.h"
 #include "ray_handmade_math.h"
+#include "ray_assets.h"
 
 struct random_series
 {
@@ -33,10 +36,17 @@ struct sphere
     f32 r;
 };
 
+enum material_flag
+{
+    Material_Emissive = 0x1,
+    Material_Mirror   = 0x2,
+};
+
 struct material
 {
+    u32 Flags;
     vec3 Albedo;
-    b32 Mirror;
+    vec3 Emissive;
 };
 
 struct camera
@@ -49,6 +59,8 @@ struct camera
 
 struct scene
 {
+    arena Arena;
+
     u32 MaterialCount;
     material Materials[256];
 
@@ -63,6 +75,8 @@ struct scene
 
     vec3 DirectionalLightD;
     vec3 DirectionalLightEmission;
+
+    image *IBL;
 };
 
 struct common_thread_params

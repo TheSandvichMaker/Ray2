@@ -4,6 +4,7 @@
 #include "ray_platform.h"
 #include <windows.h>
 #include <gl/gl.h>
+#include "external/robustwin32io.h"
 
 #undef CreateSemaphore
 
