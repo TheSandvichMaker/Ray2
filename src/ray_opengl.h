@@ -262,8 +262,16 @@ struct opengl_program_common
 struct opengl_bloom_downsample_program
 {
     opengl_program_common Common;
-    GLuint SourcePixSize;
-    GLuint SourceTexture;
+};
+
+struct opengl_bloom_prepass_program
+{
+    opengl_program_common Common;
+};
+
+struct opengl_scale_hdr_program
+{
+    opengl_program_common Common;
 };
 
 struct opengl_hdr_blit_program
@@ -289,12 +297,15 @@ struct opengl_framebuffer
 
 struct opengl_state
 {
+    platform_render_settings Settings;
+
     int FrameIndex;
 
     GLuint VBO;
 
-    opengl_program_common ShaderProgram;
+    opengl_scale_hdr_program ScaleHdrProgram;
     opengl_hdr_blit_program HdrBlit;
+    opengl_bloom_prepass_program BloomPrepassProgram;
     opengl_bloom_downsample_program BloomDownsampleProgram;
 
     GLuint DefaultInternalTextureFormat;
@@ -302,8 +313,11 @@ struct opengl_state
     int DisplayTextureW, DisplayTextureH;
     GLuint DisplayImageTextureHandle;
 
+    opengl_framebuffer Backbuffer;
+
     int BloomFramebufferCount;
     opengl_framebuffer BloomFramebuffers[32];
+    opengl_framebuffer BloomPongFramebuffers[32];
 };
 
 global opengl_state OpenGL;

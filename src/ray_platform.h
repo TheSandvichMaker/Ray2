@@ -209,6 +209,11 @@ typedef struct platform_api
     u32 LogicalCoreCount;
 } platform_api;
 
+typedef struct platform_render_settings
+{
+    int DEBUGShowBloomTexture;
+} platform_render_settings;
+
 //
 // App API
 //

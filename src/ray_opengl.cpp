@@ -1,3 +1,10 @@
+struct textured_vertex
+{
+    vec3 P;
+    vec4 Color;
+    vec2 UV;
+};
+
 internal bool
 GLCheckString(const char *A, const char *B)
 {
@@ -101,7 +108,7 @@ GLCompileProgram(opengl_program_common *Result, const char *VertexShaderSource, 
     char InfoLog[1024];
 
     const char *ShaderPreamble =
-        "#version 330 core" "\n";
+        "#version 450" "\n";
 
     const char *VertexShaderSources[] =
     {
@@ -161,10 +168,8 @@ GLCompileProgram(opengl_program_common *Result, const char *VertexShaderSource, 
     return ShaderProgram;
 }
 
-internal void
-GLCompileBasicProgram(opengl_program_common *Result)
-{
-    const char *VertexShaderSource = 
+const char *GLCommonVertexShader = 
+    "#line " Stringize(__LINE__) "\n"
     R"GLSL(
         layout (location = V_ATTRIB_P) in vec3 InVertexP;
         layout (location = V_ATTRIB_COLOR) in vec4 InVertexColor;
@@ -181,7 +186,48 @@ GLCompileBasicProgram(opengl_program_common *Result)
         }
     )GLSL";
 
+internal void
+GLUseProgram(opengl_program_common *Program)
+{
+    glVertexAttribPointer(V_ATTRIB_P, 3, GL_FLOAT, GL_FALSE,
+                          sizeof(textured_vertex), (void *)offsetof(textured_vertex, P));
+    glEnableVertexAttribArray(0);
+
+    glVertexAttribPointer(V_ATTRIB_COLOR, 4, GL_FLOAT, GL_FALSE,
+                          sizeof(textured_vertex), (void *)offsetof(textured_vertex, Color));
+    glEnableVertexAttribArray(1);
+
+    glVertexAttribPointer(V_ATTRIB_TEXCOORD, 2, GL_FLOAT, GL_FALSE,
+                          sizeof(textured_vertex), (void *)offsetof(textured_vertex, UV));
+    glEnableVertexAttribArray(2);
+
+    glUseProgram(Program->Program);
+    glUniform1i(Program->FrameIndex, OpenGL.FrameIndex);
+}
+
+internal void
+GLCompileScaleHdrProgram(opengl_scale_hdr_program *Result)
+{
+    const char *VertexShaderSource = 
+    "#line " Stringize(__LINE__) "\n"
+    R"GLSL(
+        layout(location = V_ATTRIB_P) in vec3 InVertexP;
+        layout(location = V_ATTRIB_COLOR) in vec4 InVertexColor;
+        layout(location = V_ATTRIB_TEXCOORD) in vec2 InTexCoord;
+
+        out vec4 VertexColor;
+        out vec2 TexCoord;
+
+        void main()
+        {
+            gl_Position = vec4(InVertexP.xyz, 1.0f);
+            VertexColor = InVertexColor;
+            TexCoord = InTexCoord;
+        }
+    )GLSL";
+
     const char *FragmentShaderSource = 
+    "#line " Stringize(__LINE__) "\n"
     R"GLSL(
         in vec4 VertexColor;
         in vec2 TexCoord;
@@ -193,45 +239,100 @@ GLCompileBasicProgram(opengl_program_common *Result)
         void main()
         {
             FragColor = VertexColor*texture(Texture, TexCoord);
+            FragColor.rgb *= (1.0f / FragColor.a);
         }
     )GLSL";
 
-    GLCompileProgram(Result, VertexShaderSource, FragmentShaderSource);
+    GLCompileProgram(&Result->Common, VertexShaderSource, FragmentShaderSource);
+}
+
+internal void
+GLUseProgram(opengl_scale_hdr_program *Program)
+{
+    GLUseProgram(&Program->Common);
 }
 
 internal void
 GLCompileBloomDownsampleProgram(opengl_bloom_downsample_program *Result)
 {
-    const char *VertexShaderSource = 
-    R"GLSL(
-        layout (location = V_ATTRIB_P) in vec3 InVertexP;
-        layout (location = V_ATTRIB_COLOR) in vec4 InVertexColor;
-        layout (location = V_ATTRIB_TEXCOORD) in vec2 InTexCoord;
-
-        out vec4 VertexColor;
-        out vec2 TexCoord;
-
-        void main()
-        {
-            gl_Position = vec4(InVertexP.xyz, 1.0f);
-            VertexColor = InVertexColor;
-            TexCoord = InTexCoord;
-        }
-    )GLSL";
+    const char *VertexShaderSource = GLCommonVertexShader;
 
     const char *FragmentShaderSource = 
+    "#line " Stringize(__LINE__) "\n"
     R"GLSL(
         in vec4 VertexColor;
         in vec2 TexCoord;
 
         out vec4 FragColor;
 
-        uniform vec2 SourcePixSize;
-        uniform sampler2D SourceTexture;
+        layout(location = 0) uniform vec2 SourcePixSize;
+        layout(location = 1) uniform sampler2D SourceTexture;
+        layout(location = 2) uniform vec2 FilterAxis;
+        layout(location = 3) uniform float GaussianFilterSize;
+
+        vec4
+        GaussianFilter(sampler2D Texture, vec2 Axis, vec2 UV, float FilterSize)
+        {
+            Axis *= SourcePixSize;
+
+            FilterSize = round(max(4.0f, FilterSize));
+            float Sigma = -(1.0f / (FilterSize * FilterSize));
+
+            vec4 Sum = vec4(0.0f);
+            for (float I = -FilterSize; I <= FilterSize; ++I)
+            {
+                float Offset = I*2.0f - 0.5f;
+                vec2 SampleUV = vec2(UV + Axis*Offset);
+
+                float Weight = exp(Offset*Offset*Sigma);
+                vec4 Curr = texture(Texture, SampleUV);
+
+                Sum.xyz += Weight*Curr.xyz;
+                Sum.w   += Weight;
+            }
+            Sum.xyz /= Sum.w + 0.0001f;
+
+            return Sum;
+        }
 
         void main()
         {
+            FragColor = GaussianFilter(SourceTexture, FilterAxis, TexCoord, GaussianFilterSize);
+        }
+    )GLSL";
 
+    GLuint Prog = GLCompileProgram(&Result->Common, VertexShaderSource, FragmentShaderSource);
+}
+
+internal void
+GLUseProgram(opengl_bloom_downsample_program *Program, int SourceW, int SourceH, vec2 Axis, float FilterSize)
+{
+    GLUseProgram(&Program->Common);
+    glUniform2f(0, 1.0f / (f32)SourceW, 1.0f / (f32)SourceH);
+    glUniform1i(1, 0);
+    glUniform2fv(2, 1, Axis.Elements);
+    glUniform1f(3, FilterSize);
+}
+
+internal void
+GLCompileBloomPrepassProgram(opengl_bloom_prepass_program *Result)
+{
+    const char *VertexShaderSource = GLCommonVertexShader;
+
+    const char *FragmentShaderSource = 
+    "#line " Stringize(__LINE__) "\n"
+    R"GLSL(
+        in vec4 VertexColor;
+        in vec2 TexCoord;
+
+        out vec4 FragColor;
+
+        layout(location = 0) uniform vec2 SourcePixSize;
+        layout(location = 1) uniform sampler2D SourceTexture;
+
+        vec4
+        TentFilter(sampler2D Texture, vec2 UV)
+        {
             const vec2 Offsets[9] = vec2[](vec2(-1.0f,  1.0f),
                                            vec2( 0.0f,  1.0f),
                                            vec2( 1.0f,  1.0f),
@@ -246,39 +347,36 @@ GLCompileBloomDownsampleProgram(opengl_bloom_downsample_program *Result)
                                              0.125f , 0.25f , 0.125f ,
                                              0.0625f, 0.125f, 0.0625f);
 
-            FragColor = vec4(0);
+            vec4 Sum = vec4(0);
             for (int I = 0; I < 9; ++I)
             {
-                FragColor += Weights[I]*texture(SourceTexture, TexCoord + SourcePixSize*Offsets[I]);
+                Sum += Weights[I]*texture(SourceTexture, TexCoord + SourcePixSize*Offsets[I]);
             }
+
+            return Sum;
+        }
+
+        void main()
+        {
+            FragColor = TentFilter(SourceTexture, TexCoord);
         }
     )GLSL";
 
     GLuint Prog = GLCompileProgram(&Result->Common, VertexShaderSource, FragmentShaderSource);
+}
 
-    Result->SourcePixSize = glGetUniformLocation(Prog, "SourcePixSize");
-    Result->SourceTexture = glGetUniformLocation(Prog, "SourceTexture");
+internal void
+GLUseProgram(opengl_bloom_prepass_program *Program, int SourceW, int SourceH)
+{
+    GLUseProgram(&Program->Common);
+    glUniform2f(0, 1.0f / (f32)SourceW, 1.0f / (f32)SourceH);
+    glUniform1i(1, 0);
 }
 
 internal void
 GLCompileHdrBlitProgram(opengl_hdr_blit_program *Result)
 {
-    const char *VertexShaderSource =
-    R"GLSL(
-        layout (location = V_ATTRIB_P) in vec3 InVertexP;
-        layout (location = V_ATTRIB_COLOR) in vec4 InVertexColor;
-        layout (location = V_ATTRIB_TEXCOORD) in vec2 InTexCoord;
-
-        out vec4 VertexColor;
-        out vec2 TexCoord;
-
-        void main()
-        {
-            gl_Position = vec4(InVertexP.xyz, 1.0f);
-            VertexColor = InVertexColor;
-            TexCoord = InTexCoord;
-        }
-    )GLSL";
+    const char *VertexShaderSource = GLCommonVertexShader;
 
     const char *FragmentShaderSource = 
     R"GLSL(
@@ -287,9 +385,9 @@ GLCompileHdrBlitProgram(opengl_hdr_blit_program *Result)
 
         out vec4 FragColor;
 
-        uniform sampler2D SourceTexture;
         uniform int FrameIndex;
 
+        uniform sampler2D SourceTexture;
         uniform sampler2D BloomTexture0;
         uniform sampler2D BloomTexture1;
         uniform sampler2D BloomTexture2;
@@ -299,14 +397,11 @@ GLCompileHdrBlitProgram(opengl_hdr_blit_program *Result)
         uniform sampler2D BloomTexture6;
         uniform sampler2D BloomTexture7;
 
-        // SOURCE: https://www.shadertoy.com/view/XlXcW4
-        const uint k = 1103515245U;  // GLIB C
-        //const uint k = 134775813U;   // Delphi and Turbo Pascal
-        //const uint k = 20170906U;    // Today's date (use three days ago's dateif you want a prime)
-        //const uint k = 1664525U;     // Numerical Recipes
-
         vec3 Hash(uvec3 x)
         {
+            // SOURCE: https://www.shadertoy.com/view/XlXcW4
+            const uint k = 1103515245U;
+
             x = ((x>>8U)^x.yzx)*k;
             x = ((x>>8U)^x.yzx)*k;
             x = ((x>>8U)^x.yzx)*k;
@@ -314,40 +409,71 @@ GLCompileHdrBlitProgram(opengl_hdr_blit_program *Result)
             return vec3(x)*(1.0/float(0xffffffffU));
         }
 
+        vec3
+        LinearToSRGB(vec3 Color)
+        {
+            return pow(Color, vec3(1.0f / 2.23333f));
+        }
+
+        vec3
+        SRGBToLinear(vec3 Color)
+        {
+            return pow(Color, vec3(2.23333f));
+        }
+
         void main()
         {
             FragColor = VertexColor*texture(SourceTexture, TexCoord);
-            float HdrScale = 1.0f / FragColor.a;
-            FragColor.rgb *= HdrScale;
-            FragColor.rgb += (1.0f / 8.0f)*(HdrScale*texture(BloomTexture0, TexCoord).rgb +
-                                            HdrScale*texture(BloomTexture1, TexCoord).rgb +
-                                            HdrScale*texture(BloomTexture2, TexCoord).rgb +
-                                            HdrScale*texture(BloomTexture3, TexCoord).rgb +
-                                            HdrScale*texture(BloomTexture4, TexCoord).rgb +
-                                            HdrScale*texture(BloomTexture5, TexCoord).rgb +
-                                            HdrScale*texture(BloomTexture6, TexCoord).rgb +
-                                            HdrScale*texture(BloomTexture7, TexCoord).rgb);
+            vec3 Bloom = (1.0f / 6.0f)*(texture(BloomTexture0, TexCoord).rgb
+                                        + texture(BloomTexture1, TexCoord).rgb
+                                        + texture(BloomTexture2, TexCoord).rgb
+                                        + texture(BloomTexture3, TexCoord).rgb
+                                        + texture(BloomTexture4, TexCoord).rgb
+                                        + texture(BloomTexture5, TexCoord).rgb
+                                        /* + texture(BloomTexture6, TexCoord).rgb */
+                                        /* + texture(BloomTexture7, TexCoord).rgb */);
+            
+            FragColor.rgb += 0.5f*max(vec3(0.0f), Bloom.xyz - FragColor.xyz);
             FragColor.rgb = vec3(1.0f) - exp(-FragColor.rgb);
 
             vec3 PrevDitherNoise = Hash(uvec3(gl_FragCoord.xy, FrameIndex - 1));
             vec3 DitherNoise = Hash(uvec3(gl_FragCoord.xy, FrameIndex));
 
             FragColor.rgb = sqrt(FragColor.rgb);
+
             vec3 Dither = 1.0f / 255.0f*(DitherNoise - PrevDitherNoise);
             FragColor.rgb += Dither;
+
             FragColor.rgb *= FragColor.rgb;
         }
     )GLSL";
 
-    GLCompileProgram(&Result->Common, VertexShaderSource, FragmentShaderSource);
+    GLuint Prog = GLCompileProgram(&Result->Common, VertexShaderSource, FragmentShaderSource);
+    Result->SourceTexture = glGetUniformLocation(Prog, "SourceTexture");
+    Result->BloomTexture0 = glGetUniformLocation(Prog, "BloomTexture0");
+    Result->BloomTexture1 = glGetUniformLocation(Prog, "BloomTexture1");
+    Result->BloomTexture2 = glGetUniformLocation(Prog, "BloomTexture2");
+    Result->BloomTexture3 = glGetUniformLocation(Prog, "BloomTexture3");
+    Result->BloomTexture4 = glGetUniformLocation(Prog, "BloomTexture4");
+    Result->BloomTexture5 = glGetUniformLocation(Prog, "BloomTexture5");
+    Result->BloomTexture6 = glGetUniformLocation(Prog, "BloomTexture6");
+    Result->BloomTexture7 = glGetUniformLocation(Prog, "BloomTexture7");
 }
 
-struct textured_vertex
+internal void
+GLUseProgram(opengl_hdr_blit_program *Program)
 {
-    vec3 P;
-    vec4 Color;
-    vec2 UV;
-};
+    GLUseProgram(&Program->Common);
+    glUniform1i(Program->SourceTexture, 0);
+    glUniform1i(Program->BloomTexture0, 1);
+    glUniform1i(Program->BloomTexture1, 2);
+    glUniform1i(Program->BloomTexture2, 3);
+    glUniform1i(Program->BloomTexture3, 4);
+    glUniform1i(Program->BloomTexture4, 5);
+    glUniform1i(Program->BloomTexture5, 6);
+    glUniform1i(Program->BloomTexture6, 7);
+    glUniform1i(Program->BloomTexture7, 8);
+}
 
 internal void
 GLBindFramebuffer(GLuint Handle, int W, int H)
@@ -355,6 +481,12 @@ GLBindFramebuffer(GLuint Handle, int W, int H)
     glViewport(0, 0, W, H);
     glScissor(0, 0, W, H);
     glBindFramebuffer(GL_FRAMEBUFFER, Handle);
+}
+
+internal void
+GLBindFramebuffer(opengl_framebuffer *Buffer)
+{
+    GLBindFramebuffer(Buffer->FramebufferHandle, Buffer->W, Buffer->H);
 }
 
 internal void
@@ -379,101 +511,115 @@ GLEndFullscreenPass(void)
 }
 
 internal void
-GLUseProgram(opengl_program_common *Program)
+GLDownsampleBloom(void)
 {
-    glVertexAttribPointer(V_ATTRIB_P, 3, GL_FLOAT, GL_FALSE,
-                          sizeof(textured_vertex), (void *)offsetof(textured_vertex, P));
-    glEnableVertexAttribArray(0);
+    float FilterSize = 6.0f;
 
-    glVertexAttribPointer(V_ATTRIB_COLOR, 4, GL_FLOAT, GL_FALSE,
-                          sizeof(textured_vertex), (void *)offsetof(textured_vertex, Color));
-    glEnableVertexAttribArray(1);
-
-    glVertexAttribPointer(V_ATTRIB_TEXCOORD, 2, GL_FLOAT, GL_FALSE,
-                          sizeof(textured_vertex), (void *)offsetof(textured_vertex, UV));
-    glEnableVertexAttribArray(2);
-
-    glUseProgram(Program->Program);
-    glUniform1i(Program->FrameIndex, OpenGL.FrameIndex);
-}
-
-internal void
-GLUseProgram(opengl_hdr_blit_program *Program)
-{
-    GLUseProgram(&Program->Common);
-    glUniform1i(Program->SourceTexture, 0);
-    glUniform1i(Program->BloomTexture0, 1);
-    glUniform1i(Program->BloomTexture1, 2);
-    glUniform1i(Program->BloomTexture2, 3);
-    glUniform1i(Program->BloomTexture3, 4);
-    glUniform1i(Program->BloomTexture4, 5);
-    glUniform1i(Program->BloomTexture5, 6);
-    glUniform1i(Program->BloomTexture6, 7);
-    glUniform1i(Program->BloomTexture7, 8);
-}
-
-internal void
-GLUseProgram(opengl_bloom_downsample_program *Program, int SourceW, int SourceH)
-{
-    GLUseProgram(&Program->Common);
-    glUniform2f(Program->SourcePixSize, 1.0f / (f32)SourceW, 1.0f / (f32)SourceH);
-    glUniform1i(Program->SourceTexture, 0);
-}
-
-internal void
-GLDisplayBitmap(int W, int H, void *Pixels)
-{
-    glClearColor(1, 0, 1, 1);
-    glClear(GL_COLOR_BUFFER_BIT);
-
-    glBindTexture(GL_TEXTURE_2D, OpenGL.DisplayImageTextureHandle);
-    glTexImage2D(GL_TEXTURE_2D,
-                 0,
-                 OpenGL.DefaultInternalTextureFormat,
-                 W, H,
-                 0,
-                 GL_BGRA_EXT,
-                 GL_UNSIGNED_BYTE,
-                 Pixels);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-    GLBindFramebuffer(0, W, H);
-
-    GLBeginFullscreenPass();
-    GLUseProgram(&OpenGL.ShaderProgram);
-    GLEndFullscreenPass();
-}
-
-internal void
-GLDownsampleBloom(GLuint InitSourceTexture, int InitSourceW, int InitSourceH)
-{
-    GLuint SourceTexture = InitSourceTexture;
-    GLuint SourceW = InitSourceW;
-    GLuint SourceH = InitSourceH;
-
+    opengl_framebuffer *Source = &OpenGL.Backbuffer;
     for (int I = 0; I < OpenGL.BloomFramebufferCount; ++I)
     {
-        opengl_framebuffer *Dest = OpenGL.BloomFramebuffers + I;
+        opengl_framebuffer *Dest;
 
-        GLBindFramebuffer(Dest->FramebufferHandle, Dest->W, Dest->H);
-        glBindTextureUnit(0, SourceTexture);
+        Dest = OpenGL.BloomFramebuffers + I;
+
+        GLBindFramebuffer(Dest);
+        glBindTextureUnit(0, Source->TextureHandle);
 
         GLBeginFullscreenPass();
-        GLUseProgram(&OpenGL.BloomDownsampleProgram, SourceW, SourceH);
+        GLUseProgram(&OpenGL.BloomPrepassProgram, Source->W, Source->H);
         GLEndFullscreenPass();
 
-        SourceTexture = Dest->TextureHandle;
-        SourceW = Dest->W;
-        SourceH = Dest->H;
+        Source = Dest;
+        Dest = OpenGL.BloomPongFramebuffers + I;
+
+        GLBindFramebuffer(Dest);
+        glBindTextureUnit(0, Source->TextureHandle);
+
+        GLBeginFullscreenPass();
+        GLUseProgram(&OpenGL.BloomDownsampleProgram, Source->W, Source->H, Vec2(1, 0), FilterSize);
+        GLEndFullscreenPass();
+
+        Source = Dest;
+        Dest = OpenGL.BloomFramebuffers + I;
+
+        GLBindFramebuffer(Dest);
+        glBindTextureUnit(0, Source->TextureHandle);
+
+        GLBeginFullscreenPass();
+        GLUseProgram(&OpenGL.BloomDownsampleProgram, Source->W, Source->H, Vec2(0, 1), FilterSize);
+        GLEndFullscreenPass();
+
+        Source = Dest;
+    }
+}
+
+internal opengl_framebuffer
+GLCreateFramebuffer(int W, int H)
+{
+    opengl_framebuffer Result = {};
+
+    Result.W = W;
+    Result.H = H;
+
+    Result.TextureHandle = GLFramebufferTexture(Result.W, Result.H);
+
+    glCreateFramebuffers(1, &Result.FramebufferHandle);
+    glNamedFramebufferTexture(Result.FramebufferHandle,
+                              GL_COLOR_ATTACHMENT0,
+                              Result.TextureHandle,
+                              0);
+
+    return Result;
+}
+
+internal void
+GLCreateResources(int TargetW, int TargetH)
+{
+    OpenGL.Backbuffer = GLCreateFramebuffer(TargetW, TargetH);
+
+    int W = (TargetW + 1) / 2;
+    int H = (TargetH + 1) / 2;
+    OpenGL.BloomFramebufferCount = 6;
+    for (int I = 0; I < OpenGL.BloomFramebufferCount; ++I)
+    {
+        OpenGL.BloomFramebuffers[I] = GLCreateFramebuffer(W, H);
+        OpenGL.BloomPongFramebuffers[I] = GLCreateFramebuffer(W, H);
+
+        W = (W + 1) / 2;
+        H = (H + 1) / 2;
+        if (W < 1)
+        {
+            W = 1;
+        }
+        if (H < 1)
+        {
+            H = 1;
+        }
     }
 }
 
 internal void
-GLDisplayHdrBuffer(app_imagebuffer *Buffer)
+GLOutputImage(app_imagebuffer *Buffer, platform_render_settings *Settings)
 {
+    if (Settings->DEBUGShowBloomTexture < 0)
+    {
+        Settings->DEBUGShowBloomTexture = 0;
+    }
+
+    if (Settings->DEBUGShowBloomTexture > OpenGL.BloomFramebufferCount)
+    {
+        Settings->DEBUGShowBloomTexture = OpenGL.BloomFramebufferCount;
+    }
+
+    OpenGL.Settings = *Settings;
+
+    local_persist bool CreatedResources = false;
+    if (!CreatedResources)
+    {
+        GLCreateResources(Buffer->W, Buffer->H);
+        CreatedResources = true;
+    }
+
     OpenGL.FrameIndex += 1;
 
     glClearColor(1, 0, 1, 1);
@@ -493,60 +639,39 @@ GLDisplayHdrBuffer(app_imagebuffer *Buffer)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
 
-    if (OpenGL.BloomFramebufferCount == 0)
+    GLBindFramebuffer(&OpenGL.Backbuffer);
+
+    GLBeginFullscreenPass();
+    GLUseProgram(&OpenGL.ScaleHdrProgram);
+    GLEndFullscreenPass();
+
+    GLDownsampleBloom();
+
+    if ((OpenGL.Settings.DEBUGShowBloomTexture > 0) &&
+        (OpenGL.Settings.DEBUGShowBloomTexture <= OpenGL.BloomFramebufferCount))
     {
-        int W = Buffer->W;
-        int H = Buffer->H;
-        OpenGL.BloomFramebufferCount = 8;
+        int BlitIndex = OpenGL.Settings.DEBUGShowBloomTexture - 1;
+        glBlitNamedFramebuffer(OpenGL.BloomFramebuffers[BlitIndex].FramebufferHandle,
+                               0,
+                               0, 0, OpenGL.BloomFramebuffers[BlitIndex].W, OpenGL.BloomFramebuffers[BlitIndex].H,
+                               0, 0, Buffer->W, Buffer->H, 
+                               GL_COLOR_BUFFER_BIT,
+                               GL_LINEAR);
+    }
+    else
+    {
+        glBindTextureUnit(0, OpenGL.Backbuffer.TextureHandle);
         for (int I = 0; I < OpenGL.BloomFramebufferCount; ++I)
         {
-            opengl_framebuffer *Framebuffer = OpenGL.BloomFramebuffers + I;
-            Framebuffer->W = W;
-            Framebuffer->H = H;
-
-            Framebuffer->TextureHandle = GLFramebufferTexture(W, H);
-
-            glCreateFramebuffers(1, &Framebuffer->FramebufferHandle);
-            glNamedFramebufferTexture(Framebuffer->FramebufferHandle,
-                                      GL_COLOR_ATTACHMENT0,
-                                      Framebuffer->TextureHandle,
-                                      0);
-
-            W = (W + 1) / 2;
-            H = (H + 1) / 2;
-            if (W < 1)
-            {
-                W = 1;
-            }
-            if (H < 1)
-            {
-                H = 1;
-            }
+            glBindTextureUnit(1 + I, OpenGL.BloomFramebuffers[I].TextureHandle);
         }
+
+        GLBindFramebuffer(0, OpenGL.Backbuffer.W, OpenGL.Backbuffer.H);
+
+        GLBeginFullscreenPass();
+        GLUseProgram(&OpenGL.HdrBlit);
+        GLEndFullscreenPass();
     }
-
-    GLDownsampleBloom(OpenGL.DisplayImageTextureHandle, Buffer->W, Buffer->H);
-
-    glBindTextureUnit(0, OpenGL.DisplayImageTextureHandle);
-    for (int I = 0; I < OpenGL.BloomFramebufferCount; ++I)
-    {
-        glBindTextureUnit(1 + I, OpenGL.BloomFramebuffers[I].TextureHandle);
-    }
-
-#if 1
-    GLBindFramebuffer(0, Buffer->W, Buffer->H);
-    GLBeginFullscreenPass();
-    GLUseProgram(&OpenGL.HdrBlit);
-    GLEndFullscreenPass();
-#else
-    int BlitIndex = 1;
-    glBlitNamedFramebuffer(OpenGL.BloomFramebuffers[BlitIndex].FramebufferHandle,
-                           0,
-                           0, 0, OpenGL.BloomFramebuffers[BlitIndex].W, OpenGL.BloomFramebuffers[BlitIndex].H,
-                           0, 0, Buffer->W, Buffer->H, 
-                           GL_COLOR_BUFFER_BIT,
-                           GL_LINEAR);
-#endif
 }
 
 internal
@@ -584,8 +709,9 @@ GLInit(void)
 
     glGenTextures(1, &OpenGL.DisplayImageTextureHandle);
 
-    GLCompileBasicProgram(&OpenGL.ShaderProgram);
+    GLCompileScaleHdrProgram(&OpenGL.ScaleHdrProgram);
     GLCompileHdrBlitProgram(&OpenGL.HdrBlit);
+    GLCompileBloomPrepassProgram(&OpenGL.BloomPrepassProgram);
     GLCompileBloomDownsampleProgram(&OpenGL.BloomDownsampleProgram);
 
     if (glDebugMessageCallbackARB)

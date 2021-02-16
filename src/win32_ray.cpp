@@ -12,6 +12,7 @@ __declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
 global b32 G_Running = true;
 global win32_state G_Win32State;
 global LARGE_INTEGER G_PerfFreq;
+global platform_render_settings G_RenderSettings;
 
 //
 // Platform Callbacks
@@ -500,6 +501,22 @@ Win32HandleKey(app_button *Button, bool EndedDown)
     Button->HalfTransitionCount += 1;
 }
 
+internal void
+Win32HandleKeyboardInput(app_input *Input, int VKCode, bool EndedDown)
+{
+    switch (VKCode)
+    {
+        case 'A': { Win32HandleKey(&Input->Buttons[AppButton_Left], EndedDown); } break;
+        case 'D': { Win32HandleKey(&Input->Buttons[AppButton_Right], EndedDown); } break;
+        case 'W': { Win32HandleKey(&Input->Buttons[AppButton_Forward], EndedDown); } break;
+        case 'S': { Win32HandleKey(&Input->Buttons[AppButton_Back], EndedDown); } break;
+        case VK_SPACE: { Win32HandleKey(&Input->Buttons[AppButton_Up], EndedDown); } break;
+        case VK_CONTROL: { Win32HandleKey(&Input->Buttons[AppButton_Down], EndedDown); } break;
+        case 'P': { G_RenderSettings.DEBUGShowBloomTexture += EndedDown; } break;
+        case 'L': { G_RenderSettings.DEBUGShowBloomTexture -= EndedDown; } break;
+    }
+}
+
 internal void *
 Win32GetTemporaryMemory(usize Size)
 {
@@ -750,38 +767,7 @@ main(int argc, char **argv)
                     else if (Raw->header.dwType == RIM_TYPEKEYBOARD)
                     {
                         bool IsDown = !(Raw->data.keyboard.Flags & RI_KEY_BREAK);
-                        switch (Raw->data.keyboard.VKey)
-                        {
-                            case 'A': { Win32HandleKey(&Input.Buttons[AppButton_Left], IsDown); } break;
-                            case 'D': { Win32HandleKey(&Input.Buttons[AppButton_Right], IsDown); } break;
-                            case 'W': { Win32HandleKey(&Input.Buttons[AppButton_Forward], IsDown); } break;
-                            case 'S': { Win32HandleKey(&Input.Buttons[AppButton_Back], IsDown); } break;
-                            case VK_SPACE: { Win32HandleKey(&Input.Buttons[AppButton_Up], IsDown); } break;
-                            case VK_CONTROL: { Win32HandleKey(&Input.Buttons[AppButton_Down], IsDown); } break;
-                        }
-                    }
-                } break;
-
-                case WM_KEYUP:
-                case WM_KEYDOWN:
-                case WM_SYSKEYUP:
-                case WM_SYSKEYDOWN: {
-                    if (!UsingRawInput)
-                    {
-                        u32 VkCode = (u32)Message.wParam;
-                        b32 AltDown = (Message.lParam & (1 << 29)) != 0;
-                        b32 WasDown = (Message.lParam & (1 << 30)) != 0;
-                        b32 IsDown = (Message.lParam & (1 << 31)) == 0;
-
-                        switch (VkCode)
-                        {
-                            case 'A': { Win32HandleKey(&Input.Buttons[AppButton_Left], IsDown); } break;
-                            case 'D': { Win32HandleKey(&Input.Buttons[AppButton_Right], IsDown); } break;
-                            case 'W': { Win32HandleKey(&Input.Buttons[AppButton_Forward], IsDown); } break;
-                            case 'S': { Win32HandleKey(&Input.Buttons[AppButton_Back], IsDown); } break;
-                            case VK_SPACE: { Win32HandleKey(&Input.Buttons[AppButton_Up], IsDown); } break;
-                            case VK_CONTROL: { Win32HandleKey(&Input.Buttons[AppButton_Down], IsDown); } break;
-                        }
+                        Win32HandleKeyboardInput(&Input, Raw->data.keyboard.VKey, IsDown);
                     }
                 } break;
 
@@ -803,6 +789,22 @@ main(int argc, char **argv)
                 case WM_RBUTTONUP:
                 {
                     if (!UsingRawInput) Win32HandleKey(&Input.Buttons[AppButton_RightMouse], false);
+                } break;
+
+                case WM_KEYUP:
+                case WM_KEYDOWN:
+                case WM_SYSKEYUP:
+                case WM_SYSKEYDOWN:
+                {
+                    if (!UsingRawInput)
+                    {
+                        u32 VKCode = (u32)Message.wParam;
+                        b32 AltDown = (Message.lParam & (1 << 29)) != 0;
+                        b32 WasDown = (Message.lParam & (1 << 30)) != 0;
+                        b32 IsDown = (Message.lParam & (1 << 31)) == 0;
+
+                        Win32HandleKeyboardInput(&Input, VKCode, IsDown);
+                    }
                 } break;
 
                 default:
@@ -841,7 +843,7 @@ main(int argc, char **argv)
             Links.AppTick(API, &Input, &ImageBuffer);
             ExitRequested |= Input.ExitRequested;
 
-            GLDisplayHdrBuffer(&ImageBuffer);
+            GLOutputImage(&ImageBuffer, &G_RenderSettings);
         }
 
         if (Input.CaptureCursor)

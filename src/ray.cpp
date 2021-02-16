@@ -379,7 +379,7 @@ BuildTestScene(scene *Scene, arena *TempArena)
 
     AimAt(&Scene->NewCamera, Vec3(0, 2, -5), Vec3(0, 1, 0));
 
-    Scene->IBL = LoadHdr(&Scene->Arena, TempArena, "lakeside_8k.hdr");
+    Scene->IBL = LoadHdr(&Scene->Arena, TempArena, "ballroom_4k.hdr");
 
     u32 PlaneMaterialIndex = AddMaterial(Scene, { .Albedo = Vec3(0.1f, 1, 0.1f) });
     u32 Plane2MaterialIndex = AddMaterial(Scene, { .Albedo = Vec3(0.8f, 0.3f, 0.5f) });
