@@ -583,7 +583,7 @@ main(int argc, char **argv)
         .CreateSemaphore = Win32CreateSemaphore,
         .WaitOnSemaphore = Win32WaitOnSemaphore,
         .ReleaseSemaphore = Win32ReleaseSemaphore,
-        .LogicalCoreCount = 8,
+        .LogicalCoreCount = 12,
     };
     Platform = API;
 

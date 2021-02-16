@@ -168,24 +168,6 @@ GLCompileProgram(opengl_program_common *Result, const char *VertexShaderSource, 
     return ShaderProgram;
 }
 
-const char *GLCommonVertexShader = 
-    "#line " Stringize(__LINE__) "\n"
-    R"GLSL(
-        layout (location = V_ATTRIB_P) in vec3 InVertexP;
-        layout (location = V_ATTRIB_COLOR) in vec4 InVertexColor;
-        layout (location = V_ATTRIB_TEXCOORD) in vec2 InTexCoord;
-
-        out vec4 VertexColor;
-        out vec2 TexCoord;
-
-        void main()
-        {
-            gl_Position = vec4(InVertexP.xyz, 1.0f);
-            VertexColor = InVertexColor;
-            TexCoord = InTexCoord;
-        }
-    )GLSL";
-
 internal void
 GLUseProgram(opengl_program_common *Program)
 {
@@ -204,6 +186,24 @@ GLUseProgram(opengl_program_common *Program)
     glUseProgram(Program->Program);
     glUniform1i(Program->FrameIndex, OpenGL.FrameIndex);
 }
+
+const char *GLCommonVertexShader = 
+    "#line " Stringize(__LINE__) "\n"
+    R"GLSL(
+        layout (location = V_ATTRIB_P) in vec3 InVertexP;
+        layout (location = V_ATTRIB_COLOR) in vec4 InVertexColor;
+        layout (location = V_ATTRIB_TEXCOORD) in vec2 InTexCoord;
+
+        out vec4 VertexColor;
+        out vec2 TexCoord;
+
+        void main()
+        {
+            gl_Position = vec4(InVertexP.xyz, 1.0f);
+            VertexColor = InVertexColor;
+            TexCoord = InTexCoord;
+        }
+    )GLSL";
 
 internal void
 GLCompileScaleHdrProgram(opengl_scale_hdr_program *Result)
@@ -253,7 +253,7 @@ GLUseProgram(opengl_scale_hdr_program *Program)
 }
 
 internal void
-GLCompileBloomDownsampleProgram(opengl_bloom_downsample_program *Result)
+GLCompileBloomBlurProgram(opengl_bloom_blur_program *Result)
 {
     const char *VertexShaderSource = GLCommonVertexShader;
 
@@ -305,7 +305,7 @@ GLCompileBloomDownsampleProgram(opengl_bloom_downsample_program *Result)
 }
 
 internal void
-GLUseProgram(opengl_bloom_downsample_program *Program, int SourceW, int SourceH, vec2 Axis, float FilterSize)
+GLUseProgram(opengl_bloom_blur_program *Program, int SourceW, int SourceH, vec2 Axis, float FilterSize)
 {
     GLUseProgram(&Program->Common);
     glUniform2f(0, 1.0f / (f32)SourceW, 1.0f / (f32)SourceH);
@@ -315,7 +315,7 @@ GLUseProgram(opengl_bloom_downsample_program *Program, int SourceW, int SourceH,
 }
 
 internal void
-GLCompileBloomPrepassProgram(opengl_bloom_prepass_program *Result)
+GLCompileBloomDownsampleProgram(opengl_bloom_downsample_program *Result)
 {
     const char *VertexShaderSource = GLCommonVertexShader;
 
@@ -366,7 +366,7 @@ GLCompileBloomPrepassProgram(opengl_bloom_prepass_program *Result)
 }
 
 internal void
-GLUseProgram(opengl_bloom_prepass_program *Program, int SourceW, int SourceH)
+GLUseProgram(opengl_bloom_downsample_program *Program, int SourceW, int SourceH)
 {
     GLUseProgram(&Program->Common);
     glUniform2f(0, 1.0f / (f32)SourceW, 1.0f / (f32)SourceH);
@@ -433,7 +433,7 @@ GLCompileHdrBlitProgram(opengl_hdr_blit_program *Result)
                                         /* + texture(BloomTexture6, TexCoord).rgb */
                                         /* + texture(BloomTexture7, TexCoord).rgb */);
             
-            FragColor.rgb += 0.5f*max(vec3(0.0f), Bloom.xyz - FragColor.xyz);
+            FragColor.rgb += 0.15f*max(vec3(0.0f), Bloom.xyz - FragColor.xyz);
             FragColor.rgb = vec3(1.0f) - exp(-FragColor.rgb);
 
             vec3 PrevDitherNoise = Hash(uvec3(gl_FragCoord.xy, FrameIndex - 1));
@@ -511,42 +511,46 @@ GLEndFullscreenPass(void)
 }
 
 internal void
-GLDownsampleBloom(void)
+GLGenerateBloom(opengl_framebuffer *Source)
 {
     float FilterSize = 6.0f;
 
-    opengl_framebuffer *Source = &OpenGL.Backbuffer;
+    opengl_framebuffer *Dest;
     for (int I = 0; I < OpenGL.BloomFramebufferCount; ++I)
     {
-        opengl_framebuffer *Dest;
-
-        Dest = OpenGL.BloomFramebuffers + I;
+        Dest = &OpenGL.BloomFramebuffers[I];
 
         GLBindFramebuffer(Dest);
         glBindTextureUnit(0, Source->TextureHandle);
 
         GLBeginFullscreenPass();
-        GLUseProgram(&OpenGL.BloomPrepassProgram, Source->W, Source->H);
+        GLUseProgram(&OpenGL.BloomDownsampleProgram, Source->W, Source->H);
         GLEndFullscreenPass();
 
         Source = Dest;
-        Dest = OpenGL.BloomPongFramebuffers + I;
+
+        //
+
+        Dest = &OpenGL.BloomPongFramebuffers[I];
 
         GLBindFramebuffer(Dest);
         glBindTextureUnit(0, Source->TextureHandle);
 
         GLBeginFullscreenPass();
-        GLUseProgram(&OpenGL.BloomDownsampleProgram, Source->W, Source->H, Vec2(1, 0), FilterSize);
+        GLUseProgram(&OpenGL.BloomBlurProgram, Source->W, Source->H, Vec2(1, 0), FilterSize);
         GLEndFullscreenPass();
 
         Source = Dest;
-        Dest = OpenGL.BloomFramebuffers + I;
+
+        //
+
+        Dest = &OpenGL.BloomFramebuffers[I];
 
         GLBindFramebuffer(Dest);
         glBindTextureUnit(0, Source->TextureHandle);
 
         GLBeginFullscreenPass();
-        GLUseProgram(&OpenGL.BloomDownsampleProgram, Source->W, Source->H, Vec2(0, 1), FilterSize);
+        GLUseProgram(&OpenGL.BloomBlurProgram, Source->W, Source->H, Vec2(0, 1), FilterSize);
         GLEndFullscreenPass();
 
         Source = Dest;
@@ -645,7 +649,7 @@ GLOutputImage(app_imagebuffer *Buffer, platform_render_settings *Settings)
     GLUseProgram(&OpenGL.ScaleHdrProgram);
     GLEndFullscreenPass();
 
-    GLDownsampleBloom();
+    GLGenerateBloom(&OpenGL.Backbuffer);
 
     if ((OpenGL.Settings.DEBUGShowBloomTexture > 0) &&
         (OpenGL.Settings.DEBUGShowBloomTexture <= OpenGL.BloomFramebufferCount))
@@ -711,8 +715,8 @@ GLInit(void)
 
     GLCompileScaleHdrProgram(&OpenGL.ScaleHdrProgram);
     GLCompileHdrBlitProgram(&OpenGL.HdrBlit);
-    GLCompileBloomPrepassProgram(&OpenGL.BloomPrepassProgram);
     GLCompileBloomDownsampleProgram(&OpenGL.BloomDownsampleProgram);
+    GLCompileBloomBlurProgram(&OpenGL.BloomBlurProgram);
 
     if (glDebugMessageCallbackARB)
     {

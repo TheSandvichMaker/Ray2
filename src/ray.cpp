@@ -525,7 +525,7 @@ RayTick(platform_api API, app_input *Input, app_imagebuffer *ImageBuffer)
 {
     Platform = API;
 
-    f32 dt = 1.0f / 240.0f;
+    f32 dt = 1.0f / 60.0f;
 
     if (!RayState)
     {
@@ -551,9 +551,11 @@ RayTick(platform_api API, app_input *Input, app_imagebuffer *ImageBuffer)
         if ((Input->MouseDeltaX != 0) ||
             (Input->MouseDeltaY != 0))
         {
+            float MouseScale = 1.0f;
+
             vec3 CameraZ = Camera->Z;
-            CameraZ -= dt*Camera->X*(f32)Input->MouseDeltaX;
-            CameraZ += dt*Camera->Y*(f32)Input->MouseDeltaY;
+            CameraZ -= dt*MouseScale*Camera->X*(f32)Input->MouseDeltaX;
+            CameraZ += dt*MouseScale*Camera->Y*(f32)Input->MouseDeltaY;
 
             Aim(Camera, CameraZ);
         }
