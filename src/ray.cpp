@@ -85,7 +85,7 @@ OrientedAroundNormal(vec3 V, vec3 N) {
 
 internal always_inline vec3
 MapToHemisphere(vec3 N, vec2 Sample) {
-	f32 Azimuth = 2.0f*HMM_PI32*Sample.X;
+	f32 Azimuth = Tau32*Sample.X;
 	f32 Y       = Sample.Y;
 
     vec3 Hemi;
@@ -99,7 +99,7 @@ MapToHemisphere(vec3 N, vec2 Sample) {
 
 internal always_inline vec3
 MapToCosineWeightedHemisphere(vec3 N, vec2 Sample) {
-	f32 Azimuth = 2.0f*HMM_PI32*Sample.X;
+	f32 Azimuth = Tau32*Sample.X;
 	f32 Y       = Sample.Y;
 
     vec3 Hemi;
@@ -284,7 +284,7 @@ CastRays(scene *Scene, int MinX, int MinY, int OnePastMaxX, int OnePastMaxY, app
                     }
                     else
                     {
-                        vec3 BRDF = (1.0f / HMM_PI32)*Material->Albedo;
+                        vec3 BRDF = RcpPi32*Material->Albedo;
                         Throughput *= BRDF;
 
                         f32 NdotL = Dot(N, DirectionalLightD);
@@ -299,7 +299,7 @@ CastRays(scene *Scene, int MinX, int MinY, int OnePastMaxX, int OnePastMaxY, app
                         RayP = HitP + EPSILON*R;
                         RayD = R;
 
-                        Throughput *= HMM_PI32;
+                        Throughput *= Pi32;
 
                         f32 RouletteTest = RandomUnilateral(&Entropy);
                         f32 RouletteChance = Clamp(0.1f, Max3(Throughput), 0.9f);
@@ -319,8 +319,8 @@ CastRays(scene *Scene, int MinX, int MinY, int OnePastMaxX, int OnePastMaxY, app
 
                         f32 Phi = ATan2F(RayD.Z, RayD.X);
                         f32 Theta = ASinF(RayD.Y);
-                        f32 U = 0.5f + (0.5f / HMM_PI32)*Phi;
-                        f32 V = 0.5f + (1.0f / HMM_PI32)*Theta;
+                        f32 U = 0.5f + (0.5f / Pi32)*Phi;
+                        f32 V = 0.5f + RcpPi32*Theta;
 
                         s32 SkyX = (s32)(U*(f32)IBL->W) % IBL->W;
                         s32 SkyY = (s32)(V*(f32)IBL->H) % IBL->H;
@@ -386,6 +386,7 @@ BuildTestScene(scene *Scene, arena *TempArena)
     u32 SphereMaterialIndex = AddMaterial(Scene, { .Albedo = Vec3(1, 1, 1) });
     u32 Sphere2MaterialIndex = AddMaterial(Scene, { .Flags = Material_Mirror, .Albedo = Vec3(1, 0.5f, 0.2f) });
 
+#if 0
     Scene->Planes[Scene->PlaneCount++] =
     {
         .Material = PlaneMaterialIndex,
@@ -393,7 +394,6 @@ BuildTestScene(scene *Scene, arena *TempArena)
         .d = 0.0f,
     };
 
-#if 0
     Scene->Planes[Scene->PlaneCount++] =
     {
         .Material = Plane2MaterialIndex,
@@ -414,6 +414,13 @@ BuildTestScene(scene *Scene, arena *TempArena)
         .Material = Sphere2MaterialIndex,
         .P = Vec3(5, 3.0f, 0),
         .r = 2.0f,
+    };
+
+    Scene->Spheres[Scene->SphereCount++] =
+    {
+        .Material = PlaneMaterialIndex,
+        .P = Vec3(0, -100, 0),
+        .r = 100.0f,
     };
 }
 
@@ -525,7 +532,7 @@ RayTick(platform_api API, app_input *Input, app_imagebuffer *ImageBuffer)
 {
     Platform = API;
 
-    f32 dt = 1.0f / 60.0f;
+    f32 dt = Input->FrameTime;
 
     if (!RayState)
     {

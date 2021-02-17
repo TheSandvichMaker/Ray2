@@ -660,18 +660,18 @@ main(int argc, char **argv)
 
     ShowWindow(WindowHandle, SW_SHOWNORMAL);
 
-    app_input Input = {};
+    int MonitorRefreshRate = GetDeviceCaps(WindowDC, VREFRESH);
+    if (MonitorRefreshRate <= 1)
+    {
+        MonitorRefreshRate = 60;
+    }
 
     RECT PrevClientRect = {};
-
-    app_imagebuffer ImageBuffer = {};
-
-    LARGE_INTEGER StartClock = Win32GetClock();
 
     POINT PrevCursorP;
     GetCursorPos(&PrevCursorP);
 
-    b32 UsingRawInput = false;
+    bool UsingRawInput = false;
     RAWINPUTDEVICE RawDevices[2] = {};
     
     // Mouse
@@ -693,6 +693,10 @@ main(int argc, char **argv)
         fprintf(stderr, "Failed to register raw input devices. Falling back to legacy message input.\n");
     }
 
+    app_input Input = {};
+    app_imagebuffer ImageBuffer = {};
+
+    LARGE_INTEGER StartClock = Win32GetClock();
     while (G_Running)
     {
         bool ExitRequested = false;
@@ -702,6 +706,7 @@ main(int argc, char **argv)
             Input.Buttons[I].HalfTransitionCount = 0;
         }
 
+        Input.FrameTime = 1.0f / (f32)MonitorRefreshRate;
         Input.MouseDeltaX = 0;
         Input.MouseDeltaY = 0;
 
@@ -728,7 +733,7 @@ main(int argc, char **argv)
                         fprintf(stderr, "GetRawInputData returned an unexpected size.\n");
                     }
                     
-                    RAWINPUT* Raw = (RAWINPUT*)Data;
+                    RAWINPUT* Raw = (RAWINPUT *)Data;
                     if (Raw->header.dwType == RIM_TYPEMOUSE)
                     {
                         if (Raw->data.mouse.usButtonFlags)
@@ -737,17 +742,14 @@ main(int argc, char **argv)
                             {
                                 Win32HandleKey(&Input.Buttons[AppButton_LeftMouse], true);
                             }
-
                             if (Raw->data.mouse.usButtonFlags & RI_MOUSE_LEFT_BUTTON_UP)
                             {
                                 Win32HandleKey(&Input.Buttons[AppButton_LeftMouse], false);
                             }
-
                             if (Raw->data.mouse.usButtonFlags & RI_MOUSE_RIGHT_BUTTON_DOWN)
                             {
                                 Win32HandleKey(&Input.Buttons[AppButton_RightMouse], true);
                             }
-
                             if (Raw->data.mouse.usButtonFlags & RI_MOUSE_RIGHT_BUTTON_UP)
                             {
                                 Win32HandleKey(&Input.Buttons[AppButton_RightMouse], false);
@@ -760,8 +762,8 @@ main(int argc, char **argv)
                         }
                         else
                         {
-                            Input.MouseDeltaX = Raw->data.mouse.lLastX;
-                            Input.MouseDeltaY = Raw->data.mouse.lLastY;
+                            Input.MouseDeltaX = (f32)Raw->data.mouse.lLastX;
+                            Input.MouseDeltaY = (f32)Raw->data.mouse.lLastY;
                         }
                     }
                     else if (Raw->header.dwType == RIM_TYPEKEYBOARD)
@@ -775,17 +777,14 @@ main(int argc, char **argv)
                 {
                     if (!UsingRawInput) Win32HandleKey(&Input.Buttons[AppButton_LeftMouse], true);
                 } break;
-
                 case WM_LBUTTONUP:
                 {
                     if (!UsingRawInput) Win32HandleKey(&Input.Buttons[AppButton_LeftMouse], false);
                 } break;
-
                 case WM_RBUTTONDOWN:
                 {
                     if (!UsingRawInput) Win32HandleKey(&Input.Buttons[AppButton_RightMouse], true);
                 } break;
-
                 case WM_RBUTTONUP:
                 {
                     if (!UsingRawInput) Win32HandleKey(&Input.Buttons[AppButton_RightMouse], false);
@@ -799,10 +798,7 @@ main(int argc, char **argv)
                     if (!UsingRawInput)
                     {
                         u32 VKCode = (u32)Message.wParam;
-                        b32 AltDown = (Message.lParam & (1 << 29)) != 0;
-                        b32 WasDown = (Message.lParam & (1 << 30)) != 0;
-                        b32 IsDown = (Message.lParam & (1 << 31)) == 0;
-
+                        b32 IsDown = ((Message.lParam & (1 << 31)) == 0);
                         Win32HandleKeyboardInput(&Input, VKCode, IsDown);
                     }
                 } break;
@@ -836,8 +832,6 @@ main(int argc, char **argv)
             Input.MouseDeltaY = CursorP.y - PrevCursorP.y;
         }
 
-        PrevCursorP = CursorP;
-
         if (Links.AppTick)
         {
             Links.AppTick(API, &Input, &ImageBuffer);
@@ -857,15 +851,17 @@ main(int argc, char **argv)
             ScreenspaceClientRect.right = TopLeft.x + ClientW;
             ScreenspaceClientRect.bottom = TopLeft.y + ClientH;
 
+            POINT CursorResetP = { ScreenspaceClientRect.left + ClientW / 2, ScreenspaceClientRect.top + ClientH / 2 };
             ClipCursor(&ScreenspaceClientRect);
             SetCursor(nullptr);
-            SetCursorPos(ScreenspaceClientRect.left + ClientW / 2,
-                         ScreenspaceClientRect.top + ClientH / 2);
+            SetCursorPos(CursorResetP.x, CursorResetP.y);
+            PrevCursorP = CursorResetP;
         }
         else
         {
             ClipCursor(nullptr);
             SetCursor(ArrowCursor);
+            PrevCursorP = CursorP;
         }
 
         SwapBuffers(WindowDC);

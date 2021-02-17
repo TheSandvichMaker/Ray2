@@ -255,6 +255,7 @@ ButtonReleased(app_button *Button)
 
 typedef struct app_input
 {
+    f32 FrameTime;
     b32 ExitRequested; 
     b32 CaptureCursor;
     f32 MouseDeltaX;

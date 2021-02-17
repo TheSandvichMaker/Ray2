@@ -315,7 +315,7 @@ struct opengl_state
 
     opengl_framebuffer Backbuffer;
 
-    int BloomFramebufferCount;
+        int BloomFramebufferCount;
     opengl_framebuffer BloomFramebuffers[8];
     opengl_framebuffer BloomPongFramebuffers[8];
 };

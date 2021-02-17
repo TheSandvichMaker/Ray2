@@ -190,9 +190,9 @@ GLUseProgram(opengl_program_common *Program)
 const char *GLCommonVertexShader = 
     "#line " Stringize(__LINE__) "\n"
     R"GLSL(
-        layout (location = V_ATTRIB_P) in vec3 InVertexP;
-        layout (location = V_ATTRIB_COLOR) in vec4 InVertexColor;
-        layout (location = V_ATTRIB_TEXCOORD) in vec2 InTexCoord;
+        layout(location = V_ATTRIB_P) in vec3 InVertexP;
+        layout(location = V_ATTRIB_COLOR) in vec4 InVertexColor;
+        layout(location = V_ATTRIB_TEXCOORD) in vec2 InTexCoord;
 
         out vec4 VertexColor;
         out vec2 TexCoord;
@@ -208,23 +208,7 @@ const char *GLCommonVertexShader =
 internal void
 GLCompileScaleHdrProgram(opengl_scale_hdr_program *Result)
 {
-    const char *VertexShaderSource = 
-    "#line " Stringize(__LINE__) "\n"
-    R"GLSL(
-        layout(location = V_ATTRIB_P) in vec3 InVertexP;
-        layout(location = V_ATTRIB_COLOR) in vec4 InVertexColor;
-        layout(location = V_ATTRIB_TEXCOORD) in vec2 InTexCoord;
-
-        out vec4 VertexColor;
-        out vec2 TexCoord;
-
-        void main()
-        {
-            gl_Position = vec4(InVertexP.xyz, 1.0f);
-            VertexColor = InVertexColor;
-            TexCoord = InTexCoord;
-        }
-    )GLSL";
+    const char *VertexShaderSource = GLCommonVertexShader;
 
     const char *FragmentShaderSource = 
     "#line " Stringize(__LINE__) "\n"
@@ -386,6 +370,7 @@ GLCompileHdrBlitProgram(opengl_hdr_blit_program *Result)
         out vec4 FragColor;
 
         uniform int FrameIndex;
+        layout(location = 0) uniform float BloomIntensity;
 
         uniform sampler2D SourceTexture;
         uniform sampler2D BloomTexture0;
@@ -433,7 +418,7 @@ GLCompileHdrBlitProgram(opengl_hdr_blit_program *Result)
                                         /* + texture(BloomTexture6, TexCoord).rgb */
                                         /* + texture(BloomTexture7, TexCoord).rgb */);
             
-            FragColor.rgb += 0.15f*max(vec3(0.0f), Bloom.xyz - FragColor.xyz);
+            FragColor.rgb += BloomIntensity*max(vec3(0.0f), Bloom.xyz - FragColor.xyz);
             FragColor.rgb = vec3(1.0f) - exp(-FragColor.rgb);
 
             vec3 PrevDitherNoise = Hash(uvec3(gl_FragCoord.xy, FrameIndex - 1));
@@ -461,9 +446,10 @@ GLCompileHdrBlitProgram(opengl_hdr_blit_program *Result)
 }
 
 internal void
-GLUseProgram(opengl_hdr_blit_program *Program)
+GLUseProgram(opengl_hdr_blit_program *Program, float BloomIntensity)
 {
     GLUseProgram(&Program->Common);
+    glUniform1f(0, BloomIntensity);
     glUniform1i(Program->SourceTexture, 0);
     glUniform1i(Program->BloomTexture0, 1);
     glUniform1i(Program->BloomTexture1, 2);
@@ -605,9 +591,9 @@ GLCreateResources(int TargetW, int TargetH)
 internal void
 GLOutputImage(app_imagebuffer *Buffer, platform_render_settings *Settings)
 {
-    if (Settings->DEBUGShowBloomTexture < 0)
+    if (Settings->DEBUGShowBloomTexture < -1)
     {
-        Settings->DEBUGShowBloomTexture = 0;
+        Settings->DEBUGShowBloomTexture = -1;
     }
 
     if (Settings->DEBUGShowBloomTexture > OpenGL.BloomFramebufferCount)
@@ -672,8 +658,14 @@ GLOutputImage(app_imagebuffer *Buffer, platform_render_settings *Settings)
 
         GLBindFramebuffer(0, OpenGL.Backbuffer.W, OpenGL.Backbuffer.H);
 
+        float BloomIntensity = 0.1f;
+        if (OpenGL.Settings.DEBUGShowBloomTexture == -1)
+        {
+            BloomIntensity = 0.0f;
+        }
+
         GLBeginFullscreenPass();
-        GLUseProgram(&OpenGL.HdrBlit);
+        GLUseProgram(&OpenGL.HdrBlit, BloomIntensity);
         GLEndFullscreenPass();
     }
 }

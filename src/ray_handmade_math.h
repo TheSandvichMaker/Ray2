@@ -12,6 +12,15 @@ typedef hmm_vec4 vec4;
 typedef hmm_mat4 mat4;
 typedef hmm_quaternion quaternion;
 
+#define Pi32     3.14159265f
+#define Tau32    6.28318531f
+#define Pi64     3.14159265358979324
+#define Tau64    6.28318530717958648
+#define RcpPi32  0.318309886f
+#define RcpTau32 0.159154943f
+#define RcpPi64  0.318309886183790672
+#define RcpTau64 0.159154943091895336
+
 static inline float
 ASinF(float A)
 {

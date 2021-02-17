@@ -66,14 +66,17 @@ ParseU32(char **Stream, u32 *OutValue)
 }
 
 internal f32
-FloatFromBits(u32 Bits) {
+FloatFromBits(u32 Bits)
+{
     return (f32&)Bits;
 }
 
 internal vec3
-DecodeRadianceColor(radiance_color Col) {
+DecodeRadianceColor(radiance_color Col)
+{
     vec3 Result = {};
-    if (Col.Exp > 9) {
+    if (Col.Exp > 9)
+    {
         f32 Mul = FloatFromBits((Col.Exp - 9) << 23);
         Result = Vec3(Mul*((f32)Col.R + 0.5f),
                       Mul*((f32)Col.G + 0.5f),
