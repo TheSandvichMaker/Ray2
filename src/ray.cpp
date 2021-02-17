@@ -217,6 +217,40 @@ Occluded(scene *Scene, vec3 RayP, vec3 RayD, f32 max_t)
     return TraceSceneInternal<true>(Scene, RayP, RayD, &max_t, nullptr, nullptr);
 }
 
+internal always_inline f32
+FresnelDielectric(f32 CosThetaI, f32 EtaI, f32 EtaT, f32 EtaIOverEtaT, f32 *OutCosThetaT)
+{
+    // SOURCE: http://www.pbr-book.org/3ed-2018/Reflection_Models/Specular_Reflection_and_Transmission.html#fragment-ComputemonocosThetaTusingSnellslaw-0
+
+    // NOTE: Compute CosThetaT using snell's law
+    f32 SinThetaI = SquareRootF(MaxF(0.0f, 1.0f - CosThetaI*CosThetaI));
+    f32 SinThetaT = EtaIOverEtaT*SinThetaI;
+    f32 CosThetaT = SquareRootF(MaxF(0.0f, 1.0f - SinThetaT*SinThetaT));
+
+    *OutCosThetaT = CosThetaT;
+
+    // NOTE: Handle total internal reflection
+    if (SinThetaT >= 1)
+    {
+        return 1;
+    }
+
+    f32 rParallel      = (((EtaT*CosThetaI) - (EtaI*CosThetaT)) /
+                          ((EtaT*CosThetaI) + (EtaI*CosThetaT)));
+    f32 rPerpendicular = (((EtaI*CosThetaI) - (EtaT*CosThetaT)) /
+                          ((EtaI*CosThetaI) + (EtaT*CosThetaT)));
+
+    f32 Result = 0.5f*(rParallel*rParallel + rPerpendicular*rPerpendicular);
+    return Result;
+}
+
+internal always_inline vec3
+Refract(vec3 D, vec3 N, f32 CosThetaI, f32 CosThetaT, f32 EtaIOverEtaT)
+{
+    vec3 Result = EtaIOverEtaT*D + N*(EtaIOverEtaT*CosThetaI - CosThetaT);
+    return Result;
+}
+
 internal void
 CastRays(scene *Scene, int MinX, int MinY, int OnePastMaxX, int OnePastMaxY, app_imagebuffer *ImageBuffer)
 {
@@ -266,21 +300,39 @@ CastRays(scene *Scene, int MinX, int MinY, int OnePastMaxX, int OnePastMaxY, app
                 if (TraceScene(Scene, RayP, RayD, &t, &HitMaterial, &N))
                 {
                     vec3 HitP = RayP + t*RayD;
-                    f32 NdotD = -Dot(N, RayD);
+                    f32 CosThetaI = -Dot(N, RayD);
 
-                    if (NdotD < 0.0f)
+                    if (CosThetaI < 0.0f)
                     {
                         N = -N;
-                        NdotD = -NdotD;
+                        CosThetaI = -CosThetaI;
                     }
 
                     material *Material = &Scene->Materials[HitMaterial];
-                    if (Material->Flags & Material_Mirror)
+
+                    f32 EtaI = 1.0f;
+                    f32 EtaT = Material->IOR;
+                    f32 EtaIOverEtaT = EtaI / EtaT;
+
+                    b32 IsMirror = (Material->Flags & Material_Mirror);
+                    b32 ShouldReflect = IsMirror;
+                    if (!ShouldReflect && (EtaI != EtaT))
+                    {
+                        f32 CosThetaT;
+                        f32 Reflectance = FresnelDielectric(CosThetaI, EtaI, EtaT, EtaIOverEtaT, &CosThetaT);
+                        f32 ReflectTest = RandomUnilateral(&Entropy);
+                        ShouldReflect = (ReflectTest < Reflectance);
+                    }
+
+                    if (ShouldReflect)
                     {
                         vec3 R = Reflect(RayD, N);
                         RayP = HitP + EPSILON*R;
                         RayD = R;
-                        Throughput *= Material->Albedo;
+                        if (IsMirror)
+                        {
+                            Throughput *= Material->Albedo;
+                        }
                     }
                     else
                     {
@@ -383,24 +435,8 @@ BuildTestScene(scene *Scene, arena *TempArena)
 
     u32 PlaneMaterialIndex = AddMaterial(Scene, { .Albedo = Vec3(0.1f, 1, 0.1f) });
     u32 Plane2MaterialIndex = AddMaterial(Scene, { .Albedo = Vec3(0.8f, 0.3f, 0.5f) });
-    u32 SphereMaterialIndex = AddMaterial(Scene, { .Albedo = Vec3(1, 1, 1) });
+    u32 SphereMaterialIndex = AddMaterial(Scene, { .IOR = 1.5f, .Albedo = Vec3(1, 1, 1) });
     u32 Sphere2MaterialIndex = AddMaterial(Scene, { .Flags = Material_Mirror, .Albedo = Vec3(1, 0.5f, 0.2f) });
-
-#if 0
-    Scene->Planes[Scene->PlaneCount++] =
-    {
-        .Material = PlaneMaterialIndex,
-        .N = Vec3(0, 1, 0),
-        .d = 0.0f,
-    };
-
-    Scene->Planes[Scene->PlaneCount++] =
-    {
-        .Material = Plane2MaterialIndex,
-        .N = Vec3(0, 0, -1),
-        .d = -10.0f,
-    };
-#endif
 
     Scene->Spheres[Scene->SphereCount++] =
     {

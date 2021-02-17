@@ -44,9 +44,10 @@ enum material_flag
 
 struct material
 {
-    u32 Flags;
-    vec3 Albedo;
-    vec3 Emissive;
+    u32 Flags = 0;
+    f32 IOR = 1.0f;
+    vec3 Albedo = Vec3(1, 1, 1);
+    vec3 Emissive = Vec3(0, 0, 0);
 };
 
 struct camera

@@ -242,8 +242,7 @@ GLCompileBloomBlurProgram(opengl_bloom_blur_program *Result)
     const char *VertexShaderSource = GLCommonVertexShader;
 
     const char *FragmentShaderSource = 
-    "#line " Stringize(__LINE__) "\n"
-    R"GLSL(
+    "#line " Stringize(__LINE__) "\n" R"GLSL(
         in vec4 VertexColor;
         in vec2 TexCoord;
 
@@ -259,16 +258,16 @@ GLCompileBloomBlurProgram(opengl_bloom_blur_program *Result)
         {
             Axis *= SourcePixSize;
 
-            FilterSize = round(max(4.0f, FilterSize));
+            int iFilterSize = int(round(max(1.0f, FilterSize)));
             float Sigma = -(1.0f / (FilterSize * FilterSize));
 
-            vec4 Sum = vec4(0.0f);
-            for (float I = -FilterSize; I <= FilterSize; ++I)
+            vec4 Sum = vec4(0);
+            for (int I = -iFilterSize; I <= iFilterSize; ++I)
             {
-                float Offset = I*2.0f - 0.5f;
+                float Offset = I;
                 vec2 SampleUV = vec2(UV + Axis*Offset);
 
-                float Weight = exp(Offset*Offset*Sigma);
+                float Weight = exp((2*Offset)*(2*Offset)*Sigma);
                 vec4 Curr = texture(Texture, SampleUV);
 
                 Sum.xyz += Weight*Curr.xyz;
@@ -417,19 +416,20 @@ GLCompileHdrBlitProgram(opengl_hdr_blit_program *Result)
                                         + texture(BloomTexture5, TexCoord).rgb
                                         /* + texture(BloomTexture6, TexCoord).rgb */
                                         /* + texture(BloomTexture7, TexCoord).rgb */);
-            
+
             FragColor.rgb += BloomIntensity*max(vec3(0.0f), Bloom.xyz - FragColor.xyz);
+            //FragColor.rgb = mix(FragColor.xyz, Bloom.xyz, BloomIntensity);
             FragColor.rgb = vec3(1.0f) - exp(-FragColor.rgb);
 
             vec3 PrevDitherNoise = Hash(uvec3(gl_FragCoord.xy, FrameIndex - 1));
             vec3 DitherNoise = Hash(uvec3(gl_FragCoord.xy, FrameIndex));
 
-            FragColor.rgb = sqrt(FragColor.rgb);
+            FragColor.rgb = LinearToSRGB(FragColor.rgb);
 
-            vec3 Dither = 1.0f / 255.0f*(DitherNoise - PrevDitherNoise);
+            vec3 Dither = (1.0f / 255.0f)*(DitherNoise - PrevDitherNoise);
             FragColor.rgb += Dither;
 
-            FragColor.rgb *= FragColor.rgb;
+            FragColor.rgb = SRGBToLinear(FragColor.rgb);
         }
     )GLSL";
 
@@ -499,11 +499,21 @@ GLEndFullscreenPass(void)
 internal void
 GLGenerateBloom(opengl_framebuffer *Source)
 {
-    float FilterSize = 6.0f;
+    float FilterSizes[] =
+    {
+        2.0f,
+        4.0f,
+        8.0f,
+        16.0f,
+        32.0f,
+        64.0f,
+    };
 
     opengl_framebuffer *Dest;
     for (int I = 0; I < OpenGL.BloomFramebufferCount; ++I)
     {
+        float FilterSize = FilterSizes[MIN(I, (int)ArrayCount(FilterSizes) - 1)];
+
         Dest = &OpenGL.BloomFramebuffers[I];
 
         GLBindFramebuffer(Dest);
@@ -567,8 +577,8 @@ GLCreateResources(int TargetW, int TargetH)
 {
     OpenGL.Backbuffer = GLCreateFramebuffer(TargetW, TargetH);
 
-    int W = (TargetW + 1) / 2;
-    int H = (TargetH + 1) / 2;
+    int W = TargetW; // (TargetW + 1) / 2;
+    int H = TargetH; // (TargetH + 1) / 2;
     OpenGL.BloomFramebufferCount = 6;
     for (int I = 0; I < OpenGL.BloomFramebufferCount; ++I)
     {
@@ -658,7 +668,7 @@ GLOutputImage(app_imagebuffer *Buffer, platform_render_settings *Settings)
 
         GLBindFramebuffer(0, OpenGL.Backbuffer.W, OpenGL.Backbuffer.H);
 
-        float BloomIntensity = 0.1f;
+        float BloomIntensity = 0.05f;
         if (OpenGL.Settings.DEBUGShowBloomTexture == -1)
         {
             BloomIntensity = 0.0f;

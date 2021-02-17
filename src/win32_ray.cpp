@@ -75,17 +75,17 @@ Win32ReadEntireFile(arena *Arena, const char *FileName)
 {
     string_u8 Result = {};
 
-	LARGE_INTEGER FileSize;
+    LARGE_INTEGER FileSize;
     HANDLE FileHandle = CreateFileA(FileName, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
     if (FileHandle != INVALID_HANDLE_VALUE)
     {
-		if (GetFileSizeEx(FileHandle, &FileSize))
+        if (GetFileSizeEx(FileHandle, &FileSize))
         {
             temporary_memory ResultTemp = BeginTemporaryMemory(Arena);
             Result.Data = PushArrayNoClear(Arena, FileSize.QuadPart + 1, u8);
 
             LONGLONG GotSize;
-			if (win32_sync_read(FileHandle, 0, FileSize.QuadPart, Result.Data, &GotSize))
+            if (win32_sync_read(FileHandle, 0, FileSize.QuadPart, Result.Data, &GotSize))
             {
                 Result.Count = (usize)GotSize;
                 Result.Data[GotSize] = 0;
@@ -116,7 +116,7 @@ Win32WriteEntireFile(const char *FileName, string_u8 Data)
         {
             if ((usize)GotSize == Data.Count)
             {
-				Result = true;
+                Result = true;
             }
         }
 
@@ -558,7 +558,7 @@ Win32WindowProc(HWND Window, UINT Message, WPARAM wParam, LPARAM lParam)
 #define ExitWithError(Error) do { MessageBoxA(0, Error, "Error", MB_OK); return -1; } while(0)
 
 int
-main(int argc, char **argv)
+main(int ArgumentCount, char **Arguments)
 {
     HINSTANCE Instance = 0;
 
@@ -583,7 +583,7 @@ main(int argc, char **argv)
         .CreateSemaphore = Win32CreateSemaphore,
         .WaitOnSemaphore = Win32WaitOnSemaphore,
         .ReleaseSemaphore = Win32ReleaseSemaphore,
-        .LogicalCoreCount = 12,
+        .LogicalCoreCount = SystemInfo.dwNumberOfProcessors,
     };
     Platform = API;
 
