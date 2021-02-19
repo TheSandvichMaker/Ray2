@@ -15,10 +15,10 @@ set SOURCE=win32_ray.cpp ray.cpp
 set OUTPUT=ray.exe
 
 set SHARED_FLAGS=-g -gcodeview -W -Wall -Wextra -Werror -Wno-unused-function -Wno-deprecated-declarations -Wno-unused-parameter -Wno-unused-variable -Wno-writable-strings -Wno-reorder-init-list -Wno-missing-field-initializers -Wno-missing-braces -msse4.1 -ferror-limit=3
-set DEBUG_FLAGS=-O0 -DDEBUG_BUILD
+set DEBUG_FLAGS=-O0 -DRAY_DEBUG=1
 set RELEASE_FLAGS=-O3
 set LINK_LIBRARIES=-luser32.lib -lgdi32.lib -lopengl32.lib
-set INCLUDE_DIRECTORIES=-Iexternal\md\ -Igenerated\
+set INCLUDE_DIRECTORIES=-Iexternal\ -Iexternal\md\ -Igenerated\
 
 if not exist ..\build mkdir ..\build
 if not exist generated mkdir generated
