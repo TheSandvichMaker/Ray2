@@ -515,6 +515,13 @@ Win32HandleKeyboardInput(app_input *Input, int VKCode, bool EndedDown)
         case 'P': { G_RenderSettings.DEBUGShowBloomTexture += EndedDown; } break;
         case 'L': { G_RenderSettings.DEBUGShowBloomTexture -= EndedDown; } break;
     }
+
+    if (Input->KeyEventCount < APP_KEY_EVENT_MAX)
+    {
+        app_key_event *Event = &Input->KeyEvents[Input->KeyEventCount++];
+        Event->KeyCode = (platform_key_code)VKCode;
+        Event->Pressed = EndedDown;
+    }
 }
 
 internal void *
@@ -695,6 +702,10 @@ main(int ArgumentCount, char **Arguments)
 
     app_input Input = {};
     app_imagebuffer ImageBuffer = {};
+    app_render_commands RenderCommands = {};
+    RenderCommands.CommandBufferSize = Megabytes(1);
+    RenderCommands.CommandBuffer = (char *)Win32Allocate(RenderCommands.CommandBufferSize, MemFlag_NoLeakCheck,
+                                                         LOCATION_STRING("Win32 Render Commands"));
 
     LARGE_INTEGER StartClock = Win32GetClock();
     while (G_Running)
@@ -709,6 +720,8 @@ main(int ArgumentCount, char **Arguments)
         Input.FrameTime = 1.0f / (f32)MonitorRefreshRate;
         Input.MouseDeltaX = 0;
         Input.MouseDeltaY = 0;
+        Input.RawMouseDeltaX = 0;
+        Input.RawMouseDeltaY = 0;
 
         MSG Message;
         while (PeekMessageA(&Message, 0, 0, 0, PM_REMOVE))
@@ -762,8 +775,8 @@ main(int ArgumentCount, char **Arguments)
                         }
                         else
                         {
-                            Input.MouseDeltaX = (f32)Raw->data.mouse.lLastX;
-                            Input.MouseDeltaY = (f32)Raw->data.mouse.lLastY;
+                            Input.RawMouseDeltaX = Raw->data.mouse.lLastX;
+                            Input.RawMouseDeltaY = Raw->data.mouse.lLastY;
                         }
                     }
                     else if (Raw->header.dwType == RIM_TYPEKEYBOARD)
@@ -826,18 +839,21 @@ main(int ArgumentCount, char **Arguments)
         POINT CursorP;
         GetCursorPos(&CursorP);
 
-        if (!UsingRawInput)
-        {
-            Input.MouseDeltaX = CursorP.x - PrevCursorP.x;
-            Input.MouseDeltaY = CursorP.y - PrevCursorP.y;
-        }
+        POINT ClientCursorP = CursorP;
+        ScreenToClient(WindowHandle, &ClientCursorP);
 
+        Input.ClientMouseX = ClientCursorP.x;
+        Input.ClientMouseY = ClientCursorP.y;
+        Input.MouseDeltaX = CursorP.x - PrevCursorP.x;
+        Input.MouseDeltaY = CursorP.y - PrevCursorP.y;
+
+        RenderCommands.CommandBufferAt = 0;
         if (Links.AppTick)
         {
-            Links.AppTick(API, &Input, &ImageBuffer);
+            Links.AppTick(API, &Input, &ImageBuffer, &RenderCommands);
             ExitRequested |= Input.ExitRequested;
 
-            GLOutputImage(&ImageBuffer, &G_RenderSettings);
+            GLRenderCommands(&ImageBuffer, &G_RenderSettings, &RenderCommands);
         }
 
         if (Input.CaptureCursor)

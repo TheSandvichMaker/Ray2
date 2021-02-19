@@ -148,6 +148,8 @@ struct string_u8
 #define always_inline __attribute__((always_inline))
 #endif
 
+#define ScopeExpr(Begin, End) for (int _DummyVar = (Begin, 1); _DummyVar; (End, _DummyVar = 0))
+
 //
 // Assert
 //
@@ -233,34 +235,170 @@ typedef enum app_button_type
 
 typedef struct app_button
 {
-    u32 HalfTransitionCount;
-    u32 EndedDown;
+    u8 HalfTransitionCount;
+    u8 EndedDown;
 } app_button;
 
 static inline bool
-ButtonPressed(app_button *Button)
+ButtonPressed(app_button Button)
 {
-    bool Result = (((Button->HalfTransitionCount == 1) && Button->EndedDown) ||
-                   (Button->HalfTransitionCount > 1));
+    bool Result = (((Button.HalfTransitionCount == 1) && Button.EndedDown) ||
+                   (Button.HalfTransitionCount > 1));
     return Result;
 }
 
 static inline bool
-ButtonReleased(app_button *Button)
+ButtonReleased(app_button Button)
 {
-    bool Result = (((Button->HalfTransitionCount == 1) && !Button->EndedDown) ||
-                   (Button->HalfTransitionCount > 1));
+    bool Result = (((Button.HalfTransitionCount == 1) && !Button.EndedDown) ||
+                   (Button.HalfTransitionCount > 1));
     return Result;
 }
 
+typedef enum platform_key_code
+{
+    PKC_LButton        = 0x1,
+    PKC_RButton        = 0x2,
+    PKC_Cancel         = 0x3,
+    PKC_MButton        = 0x4,
+    PKC_XButton1       = 0x5,
+    PKC_XButton2       = 0x6,
+    PKC_Backspace      = 0x8,
+    PKC_Tab            = 0x9,
+    PKC_Clear          = 0xC,
+    PKC_Return         = 0xD,
+    PKC_Shift          = 0x10,
+    PKC_Control        = 0x11,
+    PKC_Alt            = 0x12,
+    PKC_Pause          = 0x13,
+    PKC_CapsLock       = 0x14,
+    PKC_Kana           = 0x15,
+    PKC_Hangul         = 0x15,
+    PKC_Junja          = 0x17,
+    PKC_Final          = 0x18,
+    PKC_Hanja          = 0x19,
+    PKC_Kanji          = 0x19,
+    PKC_Escape         = 0x1B,
+    PKC_Convert        = 0x1C,
+    PKC_NonConvert     = 0x1D,
+    PKC_Accept         = 0x1E,
+    PKC_ModeChange     = 0x1F,
+    PKC_Space          = 0x20,
+    PKC_PageUp         = 0x21,
+    PKC_PageDown       = 0x22,
+    PKC_End            = 0x23,
+    PKC_Home           = 0x24,
+    PKC_Left           = 0x25,
+    PKC_Up             = 0x26,
+    PKC_Right          = 0x27,
+    PKC_Down           = 0x28,
+    PKC_Select         = 0x29,
+    PKC_Print          = 0x2A,
+    PKC_Execute        = 0x2B,
+    PKC_PrintScreen    = 0x2C,
+    PKC_Insert         = 0x2D,
+    PKC_Delete         = 0x2E,
+    PKC_Help           = 0x2F,
+    /* 0x30 - 0x39: ascii numerals */
+    /* 0x3A - 0x40: undefined */
+    /* 0x41 - 0x5A: ascii alphabet */
+    PKC_LSys           = 0x5B,
+    PKC_RSys           = 0x5C,
+    PKC_Apps           = 0x5D,
+    PKC_Sleep          = 0x5f,
+    PKC_Numpad0        = 0x60,
+    PKC_Numpad1        = 0x61,
+    PKC_Numpad2        = 0x62,
+    PKC_Numpad3        = 0x63,
+    PKC_Numpad4        = 0x64,
+    PKC_Numpad5        = 0x65,
+    PKC_Numpad6        = 0x66,
+    PKC_Numpad7        = 0x67,
+    PKC_Numpad8        = 0x68,
+    PKC_Numpad9        = 0x69,
+    PKC_Multiply       = 0x6A,
+    PKC_Add            = 0x6B,
+    PKC_Separator      = 0x6C,
+    PKC_Subtract       = 0x6D,
+    PKC_Decimal        = 0x6E,
+    PKC_Divide         = 0x6f,
+    PKC_F1             = 0x70,
+    PKC_F2             = 0x71,
+    PKC_F3             = 0x72,
+    PKC_F4             = 0x73,
+    PKC_F5             = 0x74,
+    PKC_F6             = 0x75,
+    PKC_F7             = 0x76,
+    PKC_F8             = 0x77,
+    PKC_F9             = 0x78,
+    PKC_F10            = 0x79,
+    PKC_F11            = 0x7A,
+    PKC_F12            = 0x7B,
+    PKC_F13            = 0x7C,
+    PKC_F14            = 0x7D,
+    PKC_F15            = 0x7E,
+    PKC_F16            = 0x7F,
+    PKC_F17            = 0x80,
+    PKC_F18            = 0x81,
+    PKC_F19            = 0x82,
+    PKC_F20            = 0x83,
+    PKC_F21            = 0x84,
+    PKC_F22            = 0x85,
+    PKC_F23            = 0x86,
+    PKC_F24            = 0x87,
+    PKC_Numlock        = 0x90,
+    PKC_Scroll         = 0x91,
+    PKC_LShift         = 0xA0,
+    PKC_RShift         = 0xA1,
+    PKC_LControl       = 0xA2,
+    PKC_RControl       = 0xA3,
+    PKC_LAlt           = 0xA4,
+    PKC_RAlt           = 0xA5,
+    /* 0xA6 - 0xAC: browser keys, not sure what's up with that */
+    PKC_VolumeMute     = 0xAD,
+    PKC_VolumeDown     = 0xAE,
+    PKC_VolumeUp       = 0xAF,
+    PKC_MediaNextTrack = 0xB0,
+    PKC_MediaPrevTrack = 0xB1,
+    /* 0xB5 - 0xB7: "launch" keys, not sure what's up with that */
+    PKC_Oem1           = 0xBA, // misc characters, us standard: ';:'
+    PKC_Plus           = 0xBB,
+    PKC_Comma          = 0xBC,
+    PKC_Minus          = 0xBD,
+    PKC_Period         = 0xBE,
+    PKC_Oem2           = 0xBF, // misc characters, us standard: '/?'
+    PKC_Oem3           = 0xC0, // misc characters, us standard: '~'
+    /* 0xC1 - 0xDA: reserved / unassigned */
+    /* 0xDB - 0xF5: more miscellanious OEM codes I'm ommitting for now */
+    /* 0xF6 - 0xF9: keys I've never heard of */
+    PKC_Play           = 0xFA,
+    PKC_Zoom           = 0xFB,
+    PKC_OemClear       = 0xFE,
+    PKC_COUNT,
+} platform_key_code;
+
+typedef struct app_key_event
+{
+    u8 KeyCode;
+    u8 Pressed;
+} app_key_event;
+
+#define APP_KEY_EVENT_MAX 256
 typedef struct app_input
 {
     f32 FrameTime;
     b32 ExitRequested; 
     b32 CaptureCursor;
-    f32 MouseDeltaX;
-    f32 MouseDeltaY;
+    s32 ClientMouseX;
+    s32 ClientMouseY;
+    s32 MouseDeltaX;
+    s32 MouseDeltaY;
+    s32 RawMouseDeltaX;
+    s32 RawMouseDeltaY;
     app_button Buttons[AppButton_COUNT];
+
+    u32 KeyEventCount;
+    app_key_event KeyEvents[APP_KEY_EVENT_MAX];
 } app_input;
 
 typedef struct app_init_params
@@ -270,10 +408,17 @@ typedef struct app_init_params
     int WindowW, WindowH;
 } app_init_params;
 
+typedef struct app_render_commands
+{
+    usize CommandBufferSize;
+    usize CommandBufferAt;
+    char *CommandBuffer;
+} app_render_commands;
+
 typedef struct app_links
 {
     void (*AppInit)(app_init_params *Params);
-    void (*AppTick)(platform_api PlatformAPI, app_input *Input, app_imagebuffer *ImageBuffer);
+    void (*AppTick)(platform_api PlatformAPI, app_input *Input, app_imagebuffer *ImageBuffer, app_render_commands *RenderCommands);
     void (*AppExit)(void);
 } app_links;
 

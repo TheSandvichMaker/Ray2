@@ -1,10 +1,43 @@
+#include "microui.c"
+
 #include "ray.h"
 #include "ray_assets.cpp"
+#include "ray_render_context.cpp"
 
 #define EPSILON 0.001f
 
-global bool FpsLook = false;
-global u32 FrameIndex = 0;
+global bool FpsLook;
+global u32 FrameIndex;
+
+global mu_Context *Mu;
+
+internal usize
+CStringLength(const char *StringInit)
+{
+    const char *String = StringInit;
+    while (*String)
+    {
+        ++String;
+    }
+    usize Result = String - StringInit;
+    return Result;
+}
+
+internal int
+MuTextWidth(mu_Font Font, const char *String, int Len)
+{
+    if (Len == -1)
+    {
+        Len = (int)CStringLength(String);
+    }
+    return 8*Len;
+}
+
+internal int
+MuTextHeight(mu_Font Font)
+{
+    return 12;
+}
 
 internal vec4 *
 GetBackbuffer(app_imagebuffer *ImageBuffer)
@@ -117,7 +150,6 @@ RayIntersectPlane(vec3 RayP, vec3 RayD, vec3 PlaneNormal, f32 PlaneDistance, f32
     bool Result = false;
 
     f32 Denom = Dot(PlaneNormal, RayD);
-
     if (Denom < 0.0f)
     {
         f32 t = (PlaneDistance - Dot(PlaneNormal, RayP)) / Denom;
@@ -564,7 +596,7 @@ RayInit(app_init_params *Params)
 global ray_state *RayState = 0;
 
 internal void
-RayTick(platform_api API, app_input *Input, app_imagebuffer *ImageBuffer)
+RayTick(platform_api API, app_input *Input, app_imagebuffer *ImageBuffer, app_render_commands *RenderCommands)
 {
     Platform = API;
 
@@ -574,15 +606,21 @@ RayTick(platform_api API, app_input *Input, app_imagebuffer *ImageBuffer)
     {
         RayState = BootstrapPushStruct(ray_state, Arena);
         scene *Scene = RayState->Scene = PushStruct(&RayState->Arena, scene);
+        InitializeRenderContext(&RayState->RenderContext, RenderCommands);
 
         InitThreadDispatcher(&RayState->Dispatch);
         BuildTestScene(Scene, &RayState->Arena);
+
+        Mu = PushStruct(&RayState->Arena, mu_Context);
+        mu_init(Mu);
+        Mu->text_width = MuTextWidth;
+        Mu->text_height = MuTextHeight;
     }
 
     scene *Scene = RayState->Scene;
     camera *Camera = &Scene->NewCamera;
 
-    if (ButtonPressed(&Input->Buttons[AppButton_RightMouse]))
+    if (ButtonPressed(Input->Buttons[AppButton_RightMouse]))
     {
         FpsLook = !FpsLook;
     }
@@ -591,14 +629,14 @@ RayTick(platform_api API, app_input *Input, app_imagebuffer *ImageBuffer)
 
     if (FpsLook)
     {
-        if ((Input->MouseDeltaX != 0) ||
-            (Input->MouseDeltaY != 0))
+        if ((Input->RawMouseDeltaX != 0) ||
+            (Input->RawMouseDeltaY != 0))
         {
             float MouseScale = 1.0f;
 
             vec3 CameraZ = Camera->Z;
-            CameraZ -= dt*MouseScale*Camera->X*(f32)Input->MouseDeltaX;
-            CameraZ += dt*MouseScale*Camera->Y*(f32)Input->MouseDeltaY;
+            CameraZ -= dt*MouseScale*Camera->X*(f32)Input->RawMouseDeltaX;
+            CameraZ += dt*MouseScale*Camera->Y*(f32)Input->RawMouseDeltaY;
 
             Aim(Camera, CameraZ);
         }
@@ -640,6 +678,97 @@ RayTick(platform_api API, app_input *Input, app_imagebuffer *ImageBuffer)
 
         Camera->P = CameraP;
     }
+
+    render_context *RenderContext = &RayState->RenderContext;
+
+    if ((Input->MouseDeltaX != 0) ||
+        (Input->MouseDeltaY != 0))
+    {
+        mu_input_mousemove(Mu, Input->MouseDeltaX, Input->MouseDeltaY);
+    }
+
+    if (ButtonPressed(Input->Buttons[AppButton_LeftMouse]))
+    {
+        mu_input_mousedown(Mu, Input->ClientMouseX, Input->ClientMouseY, MU_MOUSE_LEFT);
+    }
+    if (ButtonReleased(Input->Buttons[AppButton_LeftMouse]))
+    {
+        mu_input_mouseup(Mu, Input->ClientMouseX, Input->ClientMouseY, MU_MOUSE_LEFT);
+    }
+    if (ButtonPressed(Input->Buttons[AppButton_RightMouse]))
+    {
+        mu_input_mousedown(Mu, Input->ClientMouseX, Input->ClientMouseY, MU_MOUSE_RIGHT);
+    }
+    if (ButtonReleased(Input->Buttons[AppButton_RightMouse]))
+    {
+        mu_input_mouseup(Mu, Input->ClientMouseX, Input->ClientMouseY, MU_MOUSE_RIGHT);
+    }
+
+    for (usize KeyEventIndex = 0; KeyEventIndex < Input->KeyEventCount; ++KeyEventIndex)
+    {
+        app_key_event Event = Input->KeyEvents[KeyEventIndex];
+
+        int MuKeyMap[] =
+        {
+            [PKC_LShift] = MU_KEY_SHIFT,
+            [PKC_RShift] = MU_KEY_SHIFT,
+            [PKC_LControl] = MU_KEY_CTRL,
+            [PKC_RControl] = MU_KEY_CTRL,
+            [PKC_LAlt] = MU_KEY_ALT,
+            [PKC_RAlt] = MU_KEY_ALT,
+            [PKC_Return] = MU_KEY_RETURN,
+            [PKC_Backspace] = MU_KEY_BACKSPACE,
+        };
+
+        if (Event.Pressed)
+        {
+            mu_input_keydown(Mu, MuKeyMap[Event.KeyCode]);
+        }
+        else
+        {
+            mu_input_keyup(Mu, MuKeyMap[Event.KeyCode]);
+        }
+    }
+
+    mu_begin(Mu);
+    if (mu_begin_window(Mu, "Hello Worldn't", mu_rect(10, 10, 320, 640)))
+    {
+        if (mu_button(Mu, "Hello!!!!"))
+        {
+            Aim(Camera, -Camera->Z);
+        }
+        mu_end_window(Mu);
+    }
+    mu_end(Mu);
+
+    mu_Command *Command = NULL;
+    while (mu_next_command(Mu, &Command))
+    {
+        switch (Command->type)
+        {
+            case MU_COMMAND_CLIP:
+            {
+                PushClipRect(RenderContext,
+                             Vec2((f32)Command->clip.rect.x, (f32)ImageBuffer->H - (f32)Command->clip.rect.y - Command->clip.rect.h - 1),
+                             Vec2((f32)Command->clip.rect.w, (f32)Command->clip.rect.h));
+            } break;
+            case MU_COMMAND_RECT:
+            {
+                PushRect(RenderContext,
+                         Vec2((f32)Command->rect.rect.x, (f32)ImageBuffer->H - (f32)Command->rect.rect.y - Command->rect.rect.h - 1),
+                         Vec2((f32)Command->rect.rect.w, (f32)Command->rect.rect.h),
+                         Vec4(SquareF((1.0f / 255.0f)*(f32)Command->rect.color.r),
+                              SquareF((1.0f / 255.0f)*(f32)Command->rect.color.g),
+                              SquareF((1.0f / 255.0f)*(f32)Command->rect.color.b),
+                              SquareF((1.0f / 255.0f)*(f32)Command->rect.color.a)));
+            } break;
+        }
+    }
+
+    PushRect(RenderContext,
+             Vec2((f32)Input->ClientMouseX, ImageBuffer->H - (f32)Input->ClientMouseY - 1),
+             Vec2(4, 4),
+             Vec4(1, 1, 1, 1));
 
     thread_dispatch *Dispatch = &RayState->Dispatch;
     bool FinishedPass = ManageDispatch(Dispatch, 16, 16, common_thread_params {

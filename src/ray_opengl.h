@@ -309,13 +309,14 @@ struct opengl_state
     opengl_bloom_blur_program BloomBlurProgram;
 
     GLuint DefaultInternalTextureFormat;
+    GLuint WhiteTexture;
 
-    int DisplayTextureW, DisplayTextureH;
+    u32 DisplayTextureW, DisplayTextureH;
     GLuint DisplayImageTextureHandle;
 
     opengl_framebuffer Backbuffer;
 
-        int BloomFramebufferCount;
+    int BloomFramebufferCount;
     opengl_framebuffer BloomFramebuffers[8];
     opengl_framebuffer BloomPongFramebuffers[8];
 };

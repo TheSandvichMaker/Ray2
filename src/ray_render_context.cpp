@@ -6,7 +6,7 @@ InitializeRenderContext(render_context *Context, app_render_commands *Commands)
 }
 
 internal void
-PushRect(render_context *Context, vec2 Min, vec2 Max, vec4 Color)
+PushRect(render_context *Context, vec2 BottomLeft, vec2 WidthHeight, vec4 Color)
 {
     app_render_commands *Commands = Context->Commands;
     Assert(Commands->CommandBufferAt <= Commands->CommandBufferSize);
@@ -18,8 +18,26 @@ PushRect(render_context *Context, vec2 Min, vec2 Max, vec4 Color)
         Commands->CommandBufferAt += SizeRequired;
 
         Command->Type = RenderCommand_Rect;
-        Command->Min = Min;
-        Command->Max = Max;
+        Command->Min = BottomLeft;
+        Command->Max = BottomLeft + WidthHeight;
         Command->Color = Color;
+    }
+}
+
+internal void
+PushClipRect(render_context *Context, vec2 BottomLeft, vec2 WidthHeight)
+{
+    app_render_commands *Commands = Context->Commands;
+    Assert(Commands->CommandBufferAt <= Commands->CommandBufferSize);
+    usize SizeLeft = (Commands->CommandBufferSize - Commands->CommandBufferAt);
+    usize SizeRequired = sizeof(render_command);
+    if (SizeLeft >= SizeRequired)
+    {
+        render_command *Command = (render_command *)(Commands->CommandBuffer + Commands->CommandBufferAt);
+        Commands->CommandBufferAt += SizeRequired;
+
+        Command->Type = RenderCommand_ClipRect;
+        Command->Min = BottomLeft;
+        Command->Max = BottomLeft + WidthHeight;
     }
 }

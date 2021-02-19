@@ -12,8 +12,11 @@ main(int argc, char** argv)
     MD_FileInfo file_info;
     for (MD_FileIter it = { 0 }; MD_FileIterIncrement(&it, MD_S8Lit("*.mc"), &file_info);)
     {
-        MD_Node *root = MD_ParseWholeFile(file_info.filename);
-        MD_PushSibling(&first, &last, MD_NilNode(), root);
+        if (file_info.file_size > 0)
+        {
+            MD_Node *root = MD_ParseWholeFile(file_info.filename);
+            MD_PushSibling(&first, &last, MD_NilNode(), root);
+        }
     }
 
     if (first != MD_NilNode())

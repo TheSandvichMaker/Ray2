@@ -10,6 +10,8 @@ global platform_api Platform;
 #include "ray_arena.h"
 #include "ray_handmade_math.h"
 #include "ray_assets.h"
+#include "ray_render_commands.h"
+#include "ray_render_context.h"
 
 struct random_series
 {
@@ -103,7 +105,7 @@ struct ray_state
 {
     arena Arena;
     scene *Scene;
-
+    render_context RenderContext;
     thread_dispatch Dispatch;
 };
 

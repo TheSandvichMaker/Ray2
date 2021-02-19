@@ -222,6 +222,7 @@ EndTemporaryMemory(temporary_memory Temp)
 {
     if (Temp.Arena)
     {
+        Assert(Temp.Used <= Temp.Arena->Used);
         Temp.Arena->Used = Temp.Used;
         --Temp.Arena->TempCount;
     }

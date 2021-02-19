@@ -1,3 +1,5 @@
+#include "ray_render_commands.h"
+
 struct textured_vertex
 {
     vec3 P;
@@ -51,17 +53,6 @@ internal void
 GLSetScreenspace(int W, int H)
 {
     Assert(W > 0 && H > 0);
-    glMatrixMode(GL_PROJECTION);
-    float A = 2.0f / (float)W;
-    float B = 2.0f / (float)H;
-    mat4 ProjectionMatrix =
-    {
-         A, 0, 0, 0, 
-         0, B, 0, 0, 
-         0, 0, 1, 0, 
-        -1,-1, 0, 1, 
-    };
-    glLoadMatrixf((float *)ProjectionMatrix.Elements);
 }
 
 internal GLuint
@@ -171,17 +162,13 @@ GLCompileProgram(opengl_program_common *Result, const char *VertexShaderSource, 
 internal void
 GLUseProgram(opengl_program_common *Program)
 {
-    glVertexAttribPointer(V_ATTRIB_P, 3, GL_FLOAT, GL_FALSE,
-                          sizeof(textured_vertex), (void *)offsetof(textured_vertex, P));
     glEnableVertexAttribArray(0);
-
-    glVertexAttribPointer(V_ATTRIB_COLOR, 4, GL_FLOAT, GL_FALSE,
-                          sizeof(textured_vertex), (void *)offsetof(textured_vertex, Color));
     glEnableVertexAttribArray(1);
-
-    glVertexAttribPointer(V_ATTRIB_TEXCOORD, 2, GL_FLOAT, GL_FALSE,
-                          sizeof(textured_vertex), (void *)offsetof(textured_vertex, UV));
     glEnableVertexAttribArray(2);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(textured_vertex), (void *)offsetof(textured_vertex, P));
+    glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(textured_vertex), (void *)offsetof(textured_vertex, Color));
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(textured_vertex), (void *)offsetof(textured_vertex, UV));
 
     glUseProgram(Program->Program);
     glUniform1i(Program->FrameIndex, OpenGL.FrameIndex);
@@ -222,8 +209,9 @@ GLCompileScaleHdrProgram(opengl_scale_hdr_program *Result)
 
         void main()
         {
-            FragColor = VertexColor*texture(Texture, TexCoord);
+            FragColor = texture(Texture, TexCoord);
             FragColor.rgb *= (1.0f / FragColor.a);
+            FragColor *= VertexColor;
         }
     )GLSL";
 
@@ -405,15 +393,28 @@ GLCompileHdrBlitProgram(opengl_hdr_blit_program *Result)
             return pow(Color, vec3(2.23333f));
         }
 
+        vec3
+        SampleBloom(sampler2D Texture, vec2 UV)
+        {
+            ivec2 TextureSize = textureSize(Texture, 0);
+            vec2 RcpTextureSize = vec2(1.0f) / vec2(TextureSize);
+            vec3 S00 = texture(Texture, UV + 0.5f*vec2(-RcpTextureSize.x, -RcpTextureSize.y)).rgb;
+            vec3 S10 = texture(Texture, UV + 0.5f*vec2( RcpTextureSize.x, -RcpTextureSize.y)).rgb;
+            vec3 S01 = texture(Texture, UV + 0.5f*vec2(-RcpTextureSize.x,  RcpTextureSize.y)).rgb;
+            vec3 S11 = texture(Texture, UV + 0.5f*vec2( RcpTextureSize.x,  RcpTextureSize.y)).rgb;
+            vec3 Result = 0.25f*(S00 + S10 + S01 + S11);
+            return Result;
+        }
+
         void main()
         {
             FragColor = VertexColor*texture(SourceTexture, TexCoord);
-            vec3 Bloom = (1.0f / 6.0f)*(texture(BloomTexture0, TexCoord).rgb
-                                        + texture(BloomTexture1, TexCoord).rgb
-                                        + texture(BloomTexture2, TexCoord).rgb
-                                        + texture(BloomTexture3, TexCoord).rgb
-                                        + texture(BloomTexture4, TexCoord).rgb
-                                        + texture(BloomTexture5, TexCoord).rgb
+            vec3 Bloom = (1.0f / 6.0f)*(SampleBloom(BloomTexture0, TexCoord)
+                                        + SampleBloom(BloomTexture1, TexCoord)
+                                        + SampleBloom(BloomTexture2, TexCoord)
+                                        + SampleBloom(BloomTexture3, TexCoord)
+                                        + SampleBloom(BloomTexture4, TexCoord)
+                                        + SampleBloom(BloomTexture5, TexCoord)
                                         /* + texture(BloomTexture6, TexCoord).rgb */
                                         /* + texture(BloomTexture7, TexCoord).rgb */);
 
@@ -497,6 +498,23 @@ GLEndFullscreenPass(void)
 }
 
 internal void
+GLDrawRect(vec2 Min, vec2 Max, vec4 Color)
+{
+    textured_vertex Quad[] =
+    {
+        { .P = { Min.X, Min.Y, 0 }, .Color = Color, .UV = { 0, 0 } },
+        { .P = { Max.X, Min.Y, 0 }, .Color = Color, .UV = { 1, 0 } },
+        { .P = { Max.X, Max.Y, 0 }, .Color = Color, .UV = { 1, 1 } },
+        { .P = { Min.X, Min.Y, 0 }, .Color = Color, .UV = { 0, 0 } },
+        { .P = { Max.X, Max.Y, 0 }, .Color = Color, .UV = { 1, 1 } },
+        { .P = { Min.X, Max.Y, 0 }, .Color = Color, .UV = { 0, 1 } },
+    };
+    glBufferData(GL_ARRAY_BUFFER, sizeof(Quad), Quad, GL_STREAM_DRAW);
+    GLUseProgram(&OpenGL.ScaleHdrProgram);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+}
+
+internal void
 GLGenerateBloom(opengl_framebuffer *Source)
 {
     float FilterSizes[] =
@@ -572,9 +590,49 @@ GLCreateFramebuffer(int W, int H)
     return Result;
 }
 
-internal void
-GLCreateResources(int TargetW, int TargetH)
+internal bool
+SettingsRequireRebuild(platform_render_settings *Settings)
 {
+    platform_render_settings *Current = &OpenGL.Settings;
+    // TODO: compare things that would require a rebuild
+    return false;
+}
+
+internal void
+GLReleaseFramebuffer(opengl_framebuffer *Buffer)
+{
+    if (Buffer->FramebufferHandle)
+    {
+        glDeleteFramebuffers(1, &Buffer->FramebufferHandle);
+    }
+    if (Buffer->TextureHandle)
+    {
+        glDeleteTextures(1, &Buffer->TextureHandle);
+    }
+    ZeroStruct(Buffer);
+}
+
+internal void
+GLApplySettings(platform_render_settings *Settings, int TargetW, int TargetH)
+{
+    //
+    // NOTE: Release resources
+    //
+
+    GLReleaseFramebuffer(&OpenGL.Backbuffer);
+
+    for (int I = 0; I < OpenGL.BloomFramebufferCount; ++I)
+    {
+        GLReleaseFramebuffer(&OpenGL.BloomFramebuffers[I]);
+        GLReleaseFramebuffer(&OpenGL.BloomPongFramebuffers[I]);
+    }
+
+    OpenGL.Settings = *Settings;
+
+    //
+    // NOTE: Allocate resources
+    //
+
     OpenGL.Backbuffer = GLCreateFramebuffer(TargetW, TargetH);
 
     int W = TargetW; // (TargetW + 1) / 2;
@@ -599,32 +657,13 @@ GLCreateResources(int TargetW, int TargetH)
 }
 
 internal void
-GLOutputImage(app_imagebuffer *Buffer, platform_render_settings *Settings)
+GLFinalizeImage(app_imagebuffer *Buffer)
 {
-    if (Settings->DEBUGShowBloomTexture < -1)
-    {
-        Settings->DEBUGShowBloomTexture = -1;
-    }
-
-    if (Settings->DEBUGShowBloomTexture > OpenGL.BloomFramebufferCount)
-    {
-        Settings->DEBUGShowBloomTexture = OpenGL.BloomFramebufferCount;
-    }
-
-    OpenGL.Settings = *Settings;
-
-    local_persist bool CreatedResources = false;
-    if (!CreatedResources)
-    {
-        GLCreateResources(Buffer->W, Buffer->H);
-        CreatedResources = true;
-    }
-
-    OpenGL.FrameIndex += 1;
-
     glClearColor(1, 0, 1, 1);
     glClear(GL_COLOR_BUFFER_BIT);
 
+    OpenGL.DisplayTextureW = Buffer->W;
+    OpenGL.DisplayTextureH = Buffer->H;
     glBindTexture(GL_TEXTURE_2D, OpenGL.DisplayImageTextureHandle);
     glTexImage2D(GL_TEXTURE_2D,
                  0,
@@ -680,6 +719,72 @@ GLOutputImage(app_imagebuffer *Buffer, platform_render_settings *Settings)
     }
 }
 
+internal vec2
+TransformPoint(mat4 Mat, vec2 Vec)
+{
+    return (Mat*Vec4(Vec.X, Vec.Y, 0, 1)).XY;
+}
+
+internal void
+GLRenderCommands(app_imagebuffer *Buffer, platform_render_settings *Settings, app_render_commands *Commands)
+{
+    if (Settings->DEBUGShowBloomTexture < -1)
+    {
+        Settings->DEBUGShowBloomTexture = -1;
+    }
+
+    if (Settings->DEBUGShowBloomTexture > OpenGL.BloomFramebufferCount)
+    {
+        Settings->DEBUGShowBloomTexture = OpenGL.BloomFramebufferCount;
+    }
+
+    if ((OpenGL.DisplayTextureW != Buffer->W) ||
+        (OpenGL.DisplayTextureH != Buffer->H) ||
+        SettingsRequireRebuild(Settings))
+    {
+        GLApplySettings(Settings, Buffer->W, Buffer->H);
+    }
+
+    int W = Buffer->W;
+    int H = Buffer->H;
+
+    glViewport(0, 0, W, H);
+    glScissor(0, 0, W, H);
+
+    OpenGL.FrameIndex += 1;
+    GLFinalizeImage(Buffer);
+
+    float A = 2.0f / (float)W;
+    float B = 2.0f / (float)H;
+    mat4 ScreenspaceToNDC =
+    {
+         A, 0, 0, 0, 
+         0, B, 0, 0, 
+         0, 0, 1, 0, 
+        -1,-1, 0, 1, 
+    };
+
+    for (render_command *Command = (render_command *)(Commands->CommandBuffer);
+         Command < (render_command *)(Commands->CommandBuffer + Commands->CommandBufferAt);
+         ++Command)
+    {
+        vec2 NDCMin = TransformPoint(ScreenspaceToNDC, Command->Min);
+        vec2 NDCMax = TransformPoint(ScreenspaceToNDC, Command->Max);
+        switch (Command->Type)
+        {
+            case RenderCommand_ClipRect:
+            {
+                glScissor(NDCMin.X, NDCMin.Y, NDCMax.X, NDCMax.Y);
+            } break;
+            case RenderCommand_Rect:
+            {
+                glBindTextureUnit(0, OpenGL.WhiteTexture);
+                GLDrawRect(NDCMin, NDCMax, Command->Color);
+            } break;
+        }
+    }
+}
+
 internal
 GL_DEBUG_CALLBACK(GLDebugCallback)
 {
@@ -691,9 +796,9 @@ GL_DEBUG_CALLBACK(GLDebugCallback)
         char *SeverityString = "Unexpected Severity";
         switch (Severity)
         {
-            case GL_DEBUG_SEVERITY_LOW    : { SeverityString = "Low";    } break;
-            case GL_DEBUG_SEVERITY_MEDIUM : { SeverityString = "Medium"; } break;
-            case GL_DEBUG_SEVERITY_HIGH   : { SeverityString = "High";   } break;
+            case GL_DEBUG_SEVERITY_LOW: { SeverityString = "Low"; } break;
+            case GL_DEBUG_SEVERITY_MEDIUM: { SeverityString = "Medium"; } break;
+            case GL_DEBUG_SEVERITY_HIGH: { SeverityString = "High"; } break;
         }
         fprintf(stderr, "OpenGL Error (Severity: %s): %s\n", SeverityString, ErrorMessage);
         Assert(!"OpenGL Error Encountered!");
@@ -714,6 +819,13 @@ GLInit(void)
     glBindBuffer(GL_ARRAY_BUFFER, OpenGL.VBO);
 
     glGenTextures(1, &OpenGL.DisplayImageTextureHandle);
+
+    u32 White[] =
+    {
+        0xFFFFFFFF, 0xFFFFFFFF,
+        0xFFFFFFFF, 0xFFFFFFFF,
+    };
+    OpenGL.WhiteTexture = GLLoadTexture(2, 2, White);
 
     GLCompileScaleHdrProgram(&OpenGL.ScaleHdrProgram);
     GLCompileHdrBlitProgram(&OpenGL.HdrBlit);

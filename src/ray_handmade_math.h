@@ -91,4 +91,10 @@ Max3(vec3 A)
     return MaxF(A.X, MaxF(A.Y, A.Z));
 }
 
+static inline float
+SquareF(float X)
+{
+    return X*X;
+}
+
 #endif /* RAY_HANDMADE_MATH_H */

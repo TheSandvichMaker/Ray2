@@ -353,3 +353,105 @@ LoadHdr(arena *Arena, arena *TempArena, const char *FileName)
     return Result;
 }
 
+typedef struct bit_scan_result {
+    u32 Found;
+    u32 Index;
+} bit_scan_result;
+
+internal bit_scan_result
+FindLeastSignificantSetBit(u32 Value)
+{
+    bit_scan_result Result = {};
+    
+    for (u32 Test = 0; Test < 32; ++Test)
+    {
+        if (Value & (1 << Test))
+        {
+            Result.Index = Test;
+            Result.Found = true;
+            break;
+        }
+    }
+
+    return Result;
+}
+
+internal image_u32
+LoadBitmap(size_t SourceSize, void *SourceData)
+{
+    image_u32 Result = {};
+
+    if ((SourceSize > 0) && SourceData)
+    {
+        bitmap_header *Header = (bitmap_header *)SourceData;
+
+        Assert(Header->Size >= sizeof(Header));
+        Assert(Header->Height >= 0);
+        Assert(Header->Compression == 0);
+
+        u32 *Pixels = (u32 *)((u8 *)Header + Header->BitmapOffset);
+        Result.W = Header->Width;
+        Result.H = Header->Height;
+
+        u32 AlphaMask = Header->AlphaMask;
+        u32 RedMask = Header->RedMask;
+        u32 GreenMask = Header->GreenMask;
+        u32 BlueMask = Header->BlueMask;
+
+        if (!AlphaMask)
+        {
+            AlphaMask = ~(RedMask|GreenMask|BlueMask);
+        }
+
+        bit_scan_result AlphaScan = FindLeastSignificantSetBit(AlphaMask);
+        bit_scan_result RedScan = FindLeastSignificantSetBit(RedMask);
+        bit_scan_result GreenScan = FindLeastSignificantSetBit(GreenMask);
+        bit_scan_result BlueScan = FindLeastSignificantSetBit(BlueMask);
+
+        Assert(AlphaScan.Found &&
+               RedScan.Found &&
+               GreenScan.Found &&
+               BlueScan.Found);
+
+        s32 AlphaShiftDown = (s32)AlphaScan.Index;
+        s32 RedShiftDown = (s32)RedScan.Index;
+        s32 GreenShiftDown = (s32)GreenScan.Index;
+        s32 BlueShiftDown = (s32)BlueScan.Index;
+
+        s32 AlphaShiftUp = 24;
+        s32 RedShiftUp = 16;
+        s32 GreenShiftUp = 8;
+        s32 BlueShiftUp = 0;
+
+        u32 *SourceDest = Pixels;
+        for (s32 I = 0; I < Header->Width*Header->Height; ++I)
+        {
+            u32 C = *SourceDest;
+            f32 TexelR = (f32)((C & RedMask) >> RedShiftDown);
+            f32 TexelG = (f32)((C & GreenMask) >> GreenShiftDown);
+            f32 TexelB = (f32)((C & BlueMask) >> BlueShiftDown);
+            f32 TexelA = (f32)((C & AlphaMask) >> AlphaShiftDown);
+
+            f32 Rcp255 = 1.0f/255.0f;
+            TexelA = Rcp255*TexelA;
+            TexelR = 255.0f*SquareRootF(SquareF(Rcp255*TexelR)*TexelA);
+            TexelG = 255.0f*SquareRootF(SquareF(Rcp255*TexelG)*TexelA);
+            TexelB = 255.0f*SquareRootF(SquareF(Rcp255*TexelB)*TexelA);
+            TexelA *= 255.0f;
+
+            *SourceDest++ = (((u32)(TexelA + 0.5f) << AlphaShiftUp)|
+                             ((u32)(TexelR + 0.5f) << RedShiftUp)|
+                             ((u32)(TexelG + 0.5f) << GreenShiftUp)|
+                             ((u32)(TexelB + 0.5f) << BlueShiftUp));
+        }
+
+        Result.Pixels = Pixels;
+    }
+    else
+    {
+        INVALID_CODE_PATH;
+    }
+
+    return Result;
+}
+

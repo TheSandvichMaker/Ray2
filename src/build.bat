@@ -14,7 +14,7 @@ if "%1" equ "release" (
 set SOURCE=win32_ray.cpp ray.cpp
 set OUTPUT=ray.exe
 
-set SHARED_FLAGS=-g -gcodeview -W -Wall -Wextra -Werror -Wno-unused-function -Wno-deprecated-declarations -Wno-unused-parameter -Wno-unused-variable -Wno-writable-strings -Wno-reorder-init-list -Wno-missing-field-initializers -Wno-missing-braces -msse4.1 -ferror-limit=3
+set SHARED_FLAGS=-g -gcodeview -W -Wall -Wextra -Werror -Wno-unused-function -Wno-deprecated-declarations -Wno-unused-parameter -Wno-unused-variable -Wno-writable-strings -Wno-reorder-init-list -Wno-missing-field-initializers -Wno-missing-braces -Wno-c99-designator -msse4.1 -ferror-limit=3
 set DEBUG_FLAGS=-O0 -DRAY_DEBUG=1
 set RELEASE_FLAGS=-O3
 set LINK_LIBRARIES=-luser32.lib -lgdi32.lib -lopengl32.lib
