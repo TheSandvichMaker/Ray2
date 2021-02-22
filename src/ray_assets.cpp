@@ -376,10 +376,11 @@ FindLeastSignificantSetBit(u32 Value)
     return Result;
 }
 
-internal image_u32
-LoadBitmap(size_t SourceSize, void *SourceData)
+internal bool
+ParseBitmap(size_t SourceSize, void *SourceData, image_u32 *Image)
 {
-    image_u32 Result = {};
+    bool Result = false;
+    ZeroStruct(Image);
 
     if ((SourceSize > 0) && SourceData)
     {
@@ -387,11 +388,11 @@ LoadBitmap(size_t SourceSize, void *SourceData)
 
         Assert(Header->Size >= sizeof(Header));
         Assert(Header->Height >= 0);
-        Assert(Header->Compression == 0);
+        Assert(Header->Compression == 3);
 
         u32 *Pixels = (u32 *)((u8 *)Header + Header->BitmapOffset);
-        Result.W = Header->Width;
-        Result.H = Header->Height;
+        Image->W = Header->Width;
+        Image->H = Header->Height;
 
         u32 AlphaMask = Header->AlphaMask;
         u32 RedMask = Header->RedMask;
@@ -445,13 +446,70 @@ LoadBitmap(size_t SourceSize, void *SourceData)
                              ((u32)(TexelB + 0.5f) << BlueShiftUp));
         }
 
-        Result.Pixels = Pixels;
-    }
-    else
-    {
-        INVALID_CODE_PATH;
+        Image->Pixels = Pixels;
+        Result = true;
     }
 
     return Result;
 }
 
+internal image_u32
+LoadBitmap(arena *Arena, const char *FileName)
+{
+    image_u32 Result = {};
+
+    ScopedMemory(Arena)
+    {
+        string_u8 File = Platform.ReadEntireFile(Arena, FileName);
+        if (File.Count)
+        {
+            if (ParseBitmap(File.Count, File.Data, &Result))
+            {
+                CommitTemporaryMemory(&ScopeMemory);
+            }
+        }
+    }
+
+    return Result;
+}
+
+internal void
+GenerateDebugFont(image_u32 *Image, int GlyphW, int GlyphH)
+{
+    // TODO: fix. i am dead
+    int GlyphsPerRow = Image->W % GlyphW;
+    int GlyphsPerCol = Image->W / GlyphH;
+    u32 *At = Image->Pixels + Image->W*(Image->H - GlyphH - 1);
+    printf("global u32 DebugFontData[][] =\n");
+    printf("{\n");
+    while (At > Image->Pixels)
+    {
+        printf("    {\n");
+        for (int Y = 0; Y < GlyphH; ++Y)
+        {
+            printf("        ");
+            for (int X = 0; X < GlyphW; ++X)
+            {
+                u32 Color = At[Y*Image->W + X];
+                // NOTE: magenta = transparency
+                if (Color == 0xFFFF00FF)
+                {
+                    Color = 0;
+                }
+                printf("%X, ", Color);
+            }
+            printf("\n");
+        }
+        printf("    },\n");
+
+        At += GlyphW;
+    }
+    printf("};\n");
+
+    printf(R"(
+global image DebugFont =
+{
+    %u, %u,
+    (u32 *)DebugFontData,
+};)", Image->W, Image->H);
+}

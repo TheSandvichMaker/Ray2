@@ -7,6 +7,10 @@
 #include <xmmintrin.h>
 #include <smmintrin.h>
 
+#ifdef _WIN32
+#include <intrin.h>
+#endif
+
 #ifdef __cplusplus
 extern "C"
 {

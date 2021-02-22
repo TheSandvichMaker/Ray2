@@ -22,11 +22,29 @@ struct image
     vec3 *Pixels;
 };
 
+internal inline bool
+ValidImage(image *Image)
+{
+    bool Result = ((Image->W > 0) &&
+                   (Image->H > 0) &&
+                   (Image->Pixels));
+    return Result;
+}
+
 struct image_u32
 {
     u32 W, H;
     u32 *Pixels;
 };
+
+internal inline bool
+ValidImage(image_u32 *Image)
+{
+    bool Result = ((Image->W > 0) &&
+                   (Image->H > 0) &&
+                   (Image->Pixels));
+    return Result;
+}
 
 #pragma pack(push, 1)
 struct bitmap_header {

@@ -10,6 +10,66 @@ global bool FpsLook;
 global u32 FrameIndex;
 
 global mu_Context *Mu;
+global int MuKeyMap[] =
+{
+    [PKC_LShift] = MU_KEY_SHIFT,
+    [PKC_RShift] = MU_KEY_SHIFT,
+    [PKC_LControl] = MU_KEY_CTRL,
+    [PKC_RControl] = MU_KEY_CTRL,
+    [PKC_LAlt] = MU_KEY_ALT,
+    [PKC_RAlt] = MU_KEY_ALT,
+    [PKC_Return] = MU_KEY_RETURN,
+    [PKC_Backspace] = MU_KEY_BACKSPACE,
+};
+
+internal void
+PipeMuInput(app_input *Input)
+{
+    //
+    // NOTE: Mouse Input
+    //
+
+    if ((Input->MouseDeltaX != 0) ||
+        (Input->MouseDeltaY != 0))
+    {
+        mu_input_mousemove(Mu, Input->MouseDeltaX, Input->MouseDeltaY);
+    }
+
+    if (ButtonPressed(Input->Buttons[AppButton_LeftMouse]))
+    {
+        mu_input_mousedown(Mu, Input->ClientMouseX, Input->ClientMouseY, MU_MOUSE_LEFT);
+    }
+    if (ButtonReleased(Input->Buttons[AppButton_LeftMouse]))
+    {
+        mu_input_mouseup(Mu, Input->ClientMouseX, Input->ClientMouseY, MU_MOUSE_LEFT);
+    }
+    if (ButtonPressed(Input->Buttons[AppButton_RightMouse]))
+    {
+        mu_input_mousedown(Mu, Input->ClientMouseX, Input->ClientMouseY, MU_MOUSE_RIGHT);
+    }
+    if (ButtonReleased(Input->Buttons[AppButton_RightMouse]))
+    {
+        mu_input_mouseup(Mu, Input->ClientMouseX, Input->ClientMouseY, MU_MOUSE_RIGHT);
+    }
+
+    //
+    // NOTE: Keyboard Input
+    //
+
+    for (usize KeyEventIndex = 0; KeyEventIndex < Input->KeyEventCount; ++KeyEventIndex)
+    {
+        app_key_event Event = Input->KeyEvents[KeyEventIndex];
+
+        if (Event.Pressed)
+        {
+            mu_input_keydown(Mu, MuKeyMap[Event.KeyCode]);
+        }
+        else
+        {
+            mu_input_keyup(Mu, MuKeyMap[Event.KeyCode]);
+        }
+    }
+}
 
 internal usize
 CStringLength(const char *StringInit)
@@ -599,11 +659,14 @@ internal void
 RayTick(platform_api API, app_input *Input, app_imagebuffer *ImageBuffer, app_render_commands *RenderCommands)
 {
     Platform = API;
-
     f32 dt = Input->FrameTime;
 
     if (!RayState)
     {
+        //
+        // NOTE: Initialization
+        //
+
         RayState = BootstrapPushStruct(ray_state, Arena);
         scene *Scene = RayState->Scene = PushStruct(&RayState->Arena, scene);
         InitializeRenderContext(&RayState->RenderContext, RenderCommands);
@@ -615,7 +678,19 @@ RayTick(platform_api API, app_input *Input, app_imagebuffer *ImageBuffer, app_re
         mu_init(Mu);
         Mu->text_width = MuTextWidth;
         Mu->text_height = MuTextHeight;
+
+#if 0
+        image_u32 DebugFont = LoadBitmap(&RayState->Arena, "font8x12.bmp");
+        if (ValidImage(&DebugFont))
+        {
+            GenerateDebugFont(&DebugFont, 8, 12);
+        }
+#endif
     }
+
+    //
+    // NOTE: Camera Control
+    //
 
     scene *Scene = RayState->Scene;
     camera *Camera = &Scene->NewCamera;
@@ -624,7 +699,6 @@ RayTick(platform_api API, app_input *Input, app_imagebuffer *ImageBuffer, app_re
     {
         FpsLook = !FpsLook;
     }
-
     Input->CaptureCursor = FpsLook;
 
     if (FpsLook)
@@ -679,56 +753,11 @@ RayTick(platform_api API, app_input *Input, app_imagebuffer *ImageBuffer, app_re
         Camera->P = CameraP;
     }
 
-    render_context *RenderContext = &RayState->RenderContext;
+    //
+    // NOTE: User Interface
+    //
 
-    if ((Input->MouseDeltaX != 0) ||
-        (Input->MouseDeltaY != 0))
-    {
-        mu_input_mousemove(Mu, Input->MouseDeltaX, Input->MouseDeltaY);
-    }
-
-    if (ButtonPressed(Input->Buttons[AppButton_LeftMouse]))
-    {
-        mu_input_mousedown(Mu, Input->ClientMouseX, Input->ClientMouseY, MU_MOUSE_LEFT);
-    }
-    if (ButtonReleased(Input->Buttons[AppButton_LeftMouse]))
-    {
-        mu_input_mouseup(Mu, Input->ClientMouseX, Input->ClientMouseY, MU_MOUSE_LEFT);
-    }
-    if (ButtonPressed(Input->Buttons[AppButton_RightMouse]))
-    {
-        mu_input_mousedown(Mu, Input->ClientMouseX, Input->ClientMouseY, MU_MOUSE_RIGHT);
-    }
-    if (ButtonReleased(Input->Buttons[AppButton_RightMouse]))
-    {
-        mu_input_mouseup(Mu, Input->ClientMouseX, Input->ClientMouseY, MU_MOUSE_RIGHT);
-    }
-
-    for (usize KeyEventIndex = 0; KeyEventIndex < Input->KeyEventCount; ++KeyEventIndex)
-    {
-        app_key_event Event = Input->KeyEvents[KeyEventIndex];
-
-        int MuKeyMap[] =
-        {
-            [PKC_LShift] = MU_KEY_SHIFT,
-            [PKC_RShift] = MU_KEY_SHIFT,
-            [PKC_LControl] = MU_KEY_CTRL,
-            [PKC_RControl] = MU_KEY_CTRL,
-            [PKC_LAlt] = MU_KEY_ALT,
-            [PKC_RAlt] = MU_KEY_ALT,
-            [PKC_Return] = MU_KEY_RETURN,
-            [PKC_Backspace] = MU_KEY_BACKSPACE,
-        };
-
-        if (Event.Pressed)
-        {
-            mu_input_keydown(Mu, MuKeyMap[Event.KeyCode]);
-        }
-        else
-        {
-            mu_input_keyup(Mu, MuKeyMap[Event.KeyCode]);
-        }
-    }
+    PipeMuInput(Input);
 
     mu_begin(Mu);
     if (mu_begin_window(Mu, "Hello Worldn't", mu_rect(10, 10, 320, 640)))
@@ -741,6 +770,12 @@ RayTick(platform_api API, app_input *Input, app_imagebuffer *ImageBuffer, app_re
     }
     mu_end(Mu);
 
+    //
+    // NOTE: Render User Interface
+    //
+
+    render_context *RenderContext = &RayState->RenderContext;
+
     mu_Command *Command = NULL;
     while (mu_next_command(Mu, &Command))
     {
@@ -748,27 +783,31 @@ RayTick(platform_api API, app_input *Input, app_imagebuffer *ImageBuffer, app_re
         {
             case MU_COMMAND_CLIP:
             {
-                PushClipRect(RenderContext,
-                             Vec2((f32)Command->clip.rect.x, (f32)ImageBuffer->H - (f32)Command->clip.rect.y - Command->clip.rect.h - 1),
-                             Vec2((f32)Command->clip.rect.w, (f32)Command->clip.rect.h));
+                vec2 Min = Vec2((f32)Command->clip.rect.x, (f32)ImageBuffer->H - (f32)Command->clip.rect.y - Command->clip.rect.h - 1);
+                vec2 Dim = Vec2((f32)Command->clip.rect.w, (f32)Command->clip.rect.h);
+                PushClipRect(RenderContext, Min, Dim);
             } break;
             case MU_COMMAND_RECT:
             {
-                PushRect(RenderContext,
-                         Vec2((f32)Command->rect.rect.x, (f32)ImageBuffer->H - (f32)Command->rect.rect.y - Command->rect.rect.h - 1),
-                         Vec2((f32)Command->rect.rect.w, (f32)Command->rect.rect.h),
-                         Vec4(SquareF((1.0f / 255.0f)*(f32)Command->rect.color.r),
-                              SquareF((1.0f / 255.0f)*(f32)Command->rect.color.g),
-                              SquareF((1.0f / 255.0f)*(f32)Command->rect.color.b),
-                              SquareF((1.0f / 255.0f)*(f32)Command->rect.color.a)));
+                vec2 Min = Vec2((f32)Command->rect.rect.x, (f32)ImageBuffer->H - (f32)Command->rect.rect.y - Command->rect.rect.h - 1);
+                vec2 Dim = Vec2((f32)Command->rect.rect.w, (f32)Command->rect.rect.h);
+                vec4 Color = Vec4(SquareF((1.0f / 255.0f)*(f32)Command->rect.color.r),
+                                  SquareF((1.0f / 255.0f)*(f32)Command->rect.color.g),
+                                  SquareF((1.0f / 255.0f)*(f32)Command->rect.color.b),
+                                  SquareF((1.0f / 255.0f)*(f32)Command->rect.color.a));
+                PushRect(RenderContext, Min, Dim, Color);
             } break;
         }
     }
 
     PushRect(RenderContext,
-             Vec2((f32)Input->ClientMouseX, ImageBuffer->H - (f32)Input->ClientMouseY - 1),
-             Vec2(4, 4),
+             Vec2((f32)Input->ClientMouseX - 2, ImageBuffer->H - (f32)Input->ClientMouseY - 1 - 2),
+             Vec2(5, 5),
              Vec4(1, 1, 1, 1));
+
+    //
+    // NOTE: Thread Dispatch
+    //
 
     thread_dispatch *Dispatch = &RayState->Dispatch;
     bool FinishedPass = ManageDispatch(Dispatch, 16, 16, common_thread_params {

@@ -3,6 +3,7 @@
 
 #define HMM_PREFIX(X) X
 #define HANDMADE_MATH_IMPLEMENTATION
+#define HANDMADE_MATH_NO_SSE
 #define HMM_EXTERN static
 #include "external/HandmadeMath.h"
 
@@ -12,13 +13,13 @@ typedef hmm_vec4 vec4;
 typedef hmm_mat4 mat4;
 typedef hmm_quaternion quaternion;
 
-#define Pi32     3.14159265f
-#define Tau32    6.28318531f
-#define Pi64     3.14159265358979324
-#define Tau64    6.28318530717958648
-#define RcpPi32  0.318309886f
+#define Pi32 3.14159265f
+#define Tau32 6.28318531f
+#define Pi64 3.14159265358979324
+#define Tau64 6.28318530717958648
+#define RcpPi32 0.318309886f
 #define RcpTau32 0.159154943f
-#define RcpPi64  0.318309886183790672
+#define RcpPi64 0.318309886183790672
 #define RcpTau64 0.159154943091895336
 
 static inline float
@@ -49,8 +50,7 @@ Reflect(vec3 D, vec3 N)
 static inline float
 CopySignF(float ValueOf, float SignOf)
 {
-#ifdef HANDMADE_MATH__USE_SSE
-    // NOTE: This produces trash code on GCC, but I don't care about GCC very much
+#if 1
 #if 0
     __m128 SignMask = _mm_castsi128_ps(_mm_set1_epi32(1 << 31));
     __m128 NotSignMask = _mm_castsi128_ps(_mm_set1_epi32(~(1 << 31)));
@@ -61,6 +61,7 @@ CopySignF(float ValueOf, float SignOf)
     float Result = _mm_cvtss_f32(_mm_blendv_ps(_mm_set_ss(SignOf), _mm_set_ss(ValueOf), SignMask));
 #endif
 #else
+    int SignMask = 1 << 31;
     int SignAsBits = *(int *)&SignOf;
     int ValueAsBits = *(int *)&ValueOf;
     ValueAsBits = (SignAsBits & SignMask)|(ValueAsBits & ~SignMask);

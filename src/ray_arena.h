@@ -36,14 +36,18 @@ MemoryIsEqual(usize Count, void *AInit, void *BInit)
 #define StructsAreEqual(A, B) (Assert(sizeof(*(A)) == sizeof(*(B))), MemoryIsEqual(sizeof(*(A)), A, B))
 
 internal void
-CopySize(usize Size, void *SourceInit, void *DestInit)
+CopySize(usize Size, void *Source, void *Dest)
 {
-    char *Source = (char *)SourceInit;
-    char *Dest = (char *)DestInit;
+#ifdef _MSVC_VER
+    __movsb(Dest, Source, Size);
+#elif defined(__i386__) || defined(__x86_64__)
+    __asm__ __volatile__("rep movsb" : "+c"(Size), "+S"(Source), "+D"(Dest): : "memory");
+#else
     while (--Size)
     {
         *Dest++ = *Source++;
     }
+#endif
 }
 
 #define CopyArray(Count, Source, Dest) CopySize(sizeof(*(Source))*Count, Source, Dest)
@@ -241,8 +245,8 @@ CommitTemporaryMemory(temporary_memory *Temp)
 }
 
 #define ScopedMemory(TempArena)                                       \
-    for (temporary_memory TempMem_ = BeginTemporaryMemory(TempArena); \
-         TempMem_.Arena;                                              \
-         EndTemporaryMemory(TempMem_), TempMem_.Arena = 0)
+    for (temporary_memory ScopeMemory = BeginTemporaryMemory(TempArena); \
+         ScopeMemory.Arena;                                              \
+         EndTemporaryMemory(ScopeMemory), ScopeMemory.Arena = 0)
 
 #endif /* RAY_ARENA_H */

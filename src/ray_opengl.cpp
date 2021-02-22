@@ -764,25 +764,39 @@ GLRenderCommands(app_imagebuffer *Buffer, platform_render_settings *Settings, ap
         -1,-1, 0, 1, 
     };
 
-    for (render_command *Command = (render_command *)(Commands->CommandBuffer);
-         Command < (render_command *)(Commands->CommandBuffer + Commands->CommandBufferAt);
-         ++Command)
+    char *Start = Commands->CommandBuffer;
+    char *End = Commands->CommandBuffer + Commands->CommandBufferAt;
+    for (char *At = Start; At != End;)
     {
-        vec2 NDCMin = TransformPoint(ScreenspaceToNDC, Command->Min);
-        vec2 NDCMax = TransformPoint(ScreenspaceToNDC, Command->Max);
-        switch (Command->Type)
+        Assert(At < End);
+
+        render_command_header *Header = (render_command_header *)At;
+        switch (Header->Type)
         {
-            case RenderCommand_ClipRect:
+            case RenderCommand_clip_rect:
             {
-                glScissor(NDCMin.X, NDCMin.Y, NDCMax.X, NDCMax.Y);
+                render_command_clip_rect *Command = (render_command_clip_rect *)(Header + 1);
+                At = (char *)(Command + 1);
+
+                vec2 Min = TransformPoint(ScreenspaceToNDC, Command->Min);
+                vec2 Max = TransformPoint(ScreenspaceToNDC, Command->Max);
+                glScissor(Min.X, Min.Y, Max.X, Max.Y);
             } break;
-            case RenderCommand_Rect:
+
+            case RenderCommand_rect:
             {
+                render_command_rect *Command = (render_command_rect *)(Header + 1);
+                At = (char *)(Command + 1);
+
+                vec2 Min = TransformPoint(ScreenspaceToNDC, Command->Min);
+                vec2 Max = TransformPoint(ScreenspaceToNDC, Command->Max);
                 glBindTextureUnit(0, OpenGL.WhiteTexture);
-                GLDrawRect(NDCMin, NDCMax, Command->Color);
+                GLDrawRect(Min, Max, Command->Color);
             } break;
         }
     }
+
+#undef CASE
 }
 
 internal
