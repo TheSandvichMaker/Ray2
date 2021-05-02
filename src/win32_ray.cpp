@@ -512,8 +512,14 @@ Win32HandleKeyboardInput(app_input *Input, int VKCode, bool EndedDown)
         case 'S': { Win32HandleKey(&Input->Buttons[AppButton_Back], EndedDown); } break;
         case VK_SPACE: { Win32HandleKey(&Input->Buttons[AppButton_Up], EndedDown); } break;
         case VK_CONTROL: { Win32HandleKey(&Input->Buttons[AppButton_Down], EndedDown); } break;
-        case 'P': { G_RenderSettings.DEBUGShowBloomTexture += EndedDown; } break;
-        case 'L': { G_RenderSettings.DEBUGShowBloomTexture -= EndedDown; } break;
+        case 'P':
+        {
+            G_RenderSettings.DEBUGShowBloomTexture += EndedDown;
+        } break;
+        case 'L':
+        {
+            G_RenderSettings.DEBUGShowBloomTexture -= EndedDown;
+        } break;
     }
 
     if (Input->KeyEventCount < APP_KEY_EVENT_MAX)

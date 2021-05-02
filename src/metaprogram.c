@@ -10,7 +10,7 @@ main(int argc, char** argv)
     MD_Node *last  = MD_NilNode();
 
     MD_FileInfo file_info;
-    for (MD_FileIter it = { 0 }; MD_FileIterIncrement(&it, MD_S8Lit("*.mc"), &file_info);)
+    for (MD_FileIter it = { 0 }; MD_FileIterIncrement(&it, MD_S8Lit("*.mdesk"), &file_info);)
     {
         if (file_info.file_size > 0)
         {
@@ -43,12 +43,12 @@ main(int argc, char** argv)
                 }
                 else if (MD_NodeHasTag(node, MD_S8Lit("enum")))
                 {
-                    fprintf(out_file, "typedef enum test_enum;\n");
-                    fprintf(out_file, "enum test_enum\n{\n");
+                    fprintf(out_file, "typedef enum %.*s;\n", MD_StringExpand(node->string));
+                    fprintf(out_file, "enum %.*s\n{\n", MD_StringExpand(node->string));
                     for (MD_EachNode(enumeration, node->first_child))
                     {
                         fprintf(out_file, "    %.*s", MD_StringExpand(enumeration->string));
-                        if (enumeration->first_child)
+                        if (enumeration->first_child != MD_NilNode())
                         {
                             MD_Expr *expr = MD_ParseAsExpr(enumeration->first_child, enumeration->last_child);
                             MD_i64 value = MD_EvaluateExpr_I64(expr);

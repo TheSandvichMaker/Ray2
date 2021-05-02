@@ -707,7 +707,7 @@ GLFinalizeImage(app_imagebuffer *Buffer)
 
         GLBindFramebuffer(0, OpenGL.Backbuffer.W, OpenGL.Backbuffer.H);
 
-        float BloomIntensity = 0.05f;
+        float BloomIntensity = 0.25f;
         if (OpenGL.Settings.DEBUGShowBloomTexture == -1)
         {
             BloomIntensity = 0.0f;
@@ -737,6 +737,8 @@ GLRenderCommands(app_imagebuffer *Buffer, platform_render_settings *Settings, ap
     {
         Settings->DEBUGShowBloomTexture = OpenGL.BloomFramebufferCount;
     }
+
+    OpenGL.Settings.DEBUGShowBloomTexture = Settings->DEBUGShowBloomTexture;
 
     if ((OpenGL.DisplayTextureW != Buffer->W) ||
         (OpenGL.DisplayTextureH != Buffer->H) ||
